@@ -246,28 +246,24 @@ function toggleQR(mode) {
   qr.mode   = mode;
   qr.locked = false;
 
-  // Pedir cámara trasera
+  // Pedir cámara trasera — resolución reducida para que jsQR procese más rápido
   navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: 'environment' },
-      width:  { ideal: 1280 },
-      height: { ideal: 720 }
+      width:  { ideal: 640 },
+      height: { ideal: 480 }
     }
   })
   .then(stream => {
-    qr.stream  = stream;
+    qr.stream     = stream;
     vid.srcObject = stream;
 
-    // Esperar a que el video esté listo antes de empezar el loop
-    vid.onloadedmetadata = () => {
-      vid.play().then(() => {
-        // Pequeña espera extra para que el primer frame sea real
-        setTimeout(() => startScanLoop(mode), 300);
-      }).catch(err => {
-        alert('No se pudo iniciar el video: ' + err.message);
-        stopQR();
-      });
-    };
+    // Arrancar el loop en cuanto el video empiece a reproducirse
+    vid.addEventListener('playing', () => {
+      setTimeout(() => startScanLoop(mode), 500);
+    }, { once: true });
+
+    vid.play().catch(() => {}); // forzar play (algunos móviles lo requieren)
   })
   .catch(err => {
     wrap.style.display = 'none';
@@ -278,29 +274,33 @@ function toggleQR(mode) {
   });
 }
 
-// Loop de lectura cada 200 ms con setInterval
+// Loop de lectura cada 100 ms — más rápido y con canvas reducido a 400px
 function startScanLoop(mode) {
   const vid = document.getElementById('vid-'  + mode);
   const cvs = document.getElementById('cvs-'  + mode);
   const ctx = cvs.getContext('2d', { willReadFrequently: true });
 
+  // Canvas fijo de 400x300 — suficiente para jsQR y mucho más liviano
+  cvs.width  = 400;
+  cvs.height = 300;
+
   qr.interval = setInterval(() => {
-    // Verificar que el video tenga datos reales
-    if (vid.readyState < 2 || vid.videoWidth === 0 || vid.videoHeight === 0) return;
     if (qr.locked) return;
+    // El video debe estar reproduciendo y tener dimensiones reales
+    if (vid.paused || vid.ended || vid.videoWidth === 0) return;
 
-    // Dibujar frame en canvas
-    cvs.width  = vid.videoWidth;
-    cvs.height = vid.videoHeight;
-    ctx.drawImage(vid, 0, 0, cvs.width, cvs.height);
+    // Dibujar frame escalado al canvas pequeño
+    ctx.drawImage(vid, 0, 0, 400, 300);
 
-    // Obtener pixels y pasarlos a jsQR
-    const imageData = ctx.getImageData(0, 0, cvs.width, cvs.height);
+    // Obtener pixels
+    const imageData = ctx.getImageData(0, 0, 400, 300);
+
+    // Intentar con todos los modos de inversión para mejor detección
     const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: 'dontInvert'
+      inversionAttempts: 'attemptBoth'
     });
 
-    if (code && code.data) {
+    if (code && code.data && code.data.trim() !== '') {
       qr.locked = true;         // evitar doble disparo
       beep();                   // pitido
       flashGreen(mode);         // flash verde
@@ -317,7 +317,7 @@ function startScanLoop(mode) {
         buscarTrabajador(valor);
       }
     }
-  }, 200); // cada 200 ms
+  }, 100); // cada 100 ms — el doble de intentos por segundo
 }
 
 // Detener todo

@@ -5,207 +5,293 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Almacén GT01</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #f0f4f8; color: #333; }
-  .header { background: #1F3864; color: white; padding: 12px 16px; }
-  .header h1 { font-size: 16px; }
-  .header span { font-size: 11px; color: #A8C8E8; }
-  .tabs { display: flex; background: #2E75B6; }
-  .tab { flex: 1; padding: 10px; text-align: center; color: #A8C8E8; font-size: 13px; cursor: pointer; border-bottom: 3px solid transparent; }
-  .tab.active { color: white; border-bottom-color: #F4B942; font-weight: bold; }
-  .screen { display: none; padding: 12px; }
-  .screen.active { display: block; }
-  .card { background: white; border-radius: 8px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
-  .card-title { font-size: 13px; font-weight: bold; color: #1F3864; margin-bottom: 10px; border-bottom: 1px solid #EBF3FB; padding-bottom: 6px; }
-  input, select, textarea { width: 100%; padding: 10px; border: 1px solid #BDD7EE; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
-  textarea { height: 60px; resize: none; }
-  .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 8px; }
-  .btn-primary { background: #1F3864; color: white; }
-  .btn-scan { background: #2E75B6; color: white; }
-  .btn-success { background: #375623; color: white; }
-  .btn-danger { background: #C00000; color: white; }
-  .btn-sm { padding: 6px 12px; font-size: 12px; width: auto; margin: 2px; }
-  .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
-  .badge-herr { background: #D6E4F0; color: #1F3864; }
-  .badge-insu { background: #E2EFDA; color: #375623; }
-  .trabajador-card { background: #EBF3FB; border: 2px solid #2E75B6; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
-  .trabajador-card .nombre { font-size: 16px; font-weight: bold; color: #1F3864; }
-  .trabajador-card .codigo { font-size: 12px; color: #666; }
-  .item-row { display: flex; align-items: center; gap: 8px; padding: 8px; background: #f8f9fa; border-radius: 6px; margin-bottom: 6px; border-left: 3px solid #2E75B6; }
-  .item-row .item-info { flex: 1; }
-  .item-row .item-cod { font-size: 11px; color: #666; }
-  .item-row .item-desc { font-size: 13px; font-weight: bold; }
-  .sugerencias { background: white; border: 1px solid #BDD7EE; border-radius: 6px; max-height: 200px; overflow-y: auto; margin-top: -6px; margin-bottom: 8px; display: none; }
-  .sugerencia-item { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
-  .sugerencia-item:hover { background: #EBF3FB; }
-  .sugerencia-item .s-nombre { font-size: 14px; font-weight: bold; }
-  .sugerencia-item .s-cod { font-size: 11px; color: #666; }
-  .prestamo-activo { border: 2px solid #F4B942; border-radius: 8px; padding: 12px; margin-bottom: 10px; background: #FFFDE7; }
-  .loading { text-align: center; padding: 20px; color: #666; font-size: 13px; }
-  .msg-ok { background: #E2EFDA; color: #375623; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; margin-bottom: 10px; }
-  .msg-err { background: #FCE4D6; color: #C00000; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 10px; }
-  .devolucion-item { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
-  .devolucion-item label { font-size: 13px; font-weight: bold; display: block; margin-bottom: 6px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #f0f4f8; color: #333; font-size: 14px; }
 
-  /* ── QR SCANNER STYLES ── */
-  .qr-wrapper { display: none; margin-bottom: 10px; }
-  .qr-box { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
-  .qr-box video { width: 100%; display: block; border-radius: 10px; }
-  /* Visor: esquinas animadas para guiar el encuadre */
-  .qr-overlay {
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    pointer-events: none;
-  }
-  .qr-finder {
-    width: 65%; aspect-ratio: 1;
-    position: relative;
-  }
-  .qr-finder::before, .qr-finder::after,
-  .qr-finder span::before, .qr-finder span::after {
-    content: '';
-    position: absolute;
-    width: 20px; height: 20px;
-    border-color: #F4B942;
-    border-style: solid;
-  }
-  .qr-finder::before  { top: 0;    left: 0;  border-width: 3px 0 0 3px; }
-  .qr-finder::after   { top: 0;    right: 0; border-width: 3px 3px 0 0; }
-  .qr-finder span::before { bottom: 0; left: 0;  border-width: 0 0 3px 3px; }
-  .qr-finder span::after  { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
-  .qr-label {
-    position: absolute; bottom: 8px; left: 0; right: 0;
-    text-align: center; color: white; font-size: 12px;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-  }
-  /* Flash verde al detectar */
-  .qr-flash {
-    position: absolute; inset: 0;
-    background: rgba(55, 86, 35, 0.45);
-    border-radius: 10px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.05s;
-  }
-  .qr-flash.show { opacity: 1; }
+/* ── HEADER ── */
+.header { background: #1F3864; color: white; padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
+.header h1 { font-size: 16px; flex: 1; }
+.header span { font-size: 11px; color: #A8C8E8; }
+
+/* ── TABS ── */
+.tabs { display: flex; background: #2E75B6; overflow-x: auto; }
+.tab { flex: 1; min-width: 80px; padding: 10px 6px; text-align: center; color: #A8C8E8; font-size: 12px; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; }
+.tab.active { color: white; border-bottom-color: #F4B942; font-weight: bold; }
+
+/* ── PANTALLAS ── */
+.screen { display: none; padding: 12px; }
+.screen.active { display: block; }
+
+/* ── CARDS ── */
+.card { background: white; border-radius: 8px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.card-title { font-size: 13px; font-weight: bold; color: #1F3864; margin-bottom: 10px; border-bottom: 1px solid #EBF3FB; padding-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+
+/* ── FORMS ── */
+input, select, textarea { width: 100%; padding: 10px; border: 1px solid #BDD7EE; border-radius: 6px; font-size: 14px; margin-bottom: 8px; background: white; }
+input:focus, select:focus { outline: none; border-color: #2E75B6; }
+textarea { height: 56px; resize: none; }
+label.field-label { font-size: 12px; color: #666; margin-bottom: 2px; display: block; }
+
+/* ── BOTONES ── */
+.btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 8px; }
+.btn-primary { background: #1F3864; color: white; }
+.btn-scan    { background: #2E75B6; color: white; }
+.btn-success { background: #375623; color: white; }
+.btn-danger  { background: #C00000; color: white; }
+.btn-warning { background: #F4B942; color: #333; }
+.btn-sm { padding: 7px 12px; font-size: 12px; width: auto; margin: 2px; border-radius: 6px; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── BADGES ── */
+.badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+.badge-herr { background: #D6E4F0; color: #1F3864; }
+.badge-insu { background: #FFF3CD; color: #856404; }
+.badge-mate { background: #E2EFDA; color: #375623; }
+
+/* ── TRABAJADOR SELECCIONADO ── */
+.trabajador-card { background: #EBF3FB; border: 2px solid #2E75B6; border-radius: 8px; padding: 12px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+.trabajador-card .avatar { width: 40px; height: 40px; background: #2E75B6; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; flex-shrink: 0; }
+.trabajador-card .tw-nombre { font-size: 15px; font-weight: bold; color: #1F3864; }
+.trabajador-card .tw-cod { font-size: 11px; color: #666; }
+
+/* ── SUGERENCIAS AUTOCOMPLETE ── */
+.sugerencias { background: white; border: 1px solid #BDD7EE; border-radius: 6px; max-height: 200px; overflow-y: auto; margin-top: -6px; margin-bottom: 8px; display: none; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 100; position: relative; }
+.sugerencia-item { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+.sugerencia-item:active { background: #EBF3FB; }
+.sugerencia-item .s-nombre { font-size: 14px; font-weight: bold; }
+.sugerencia-item .s-cod { font-size: 11px; color: #666; margin-top: 2px; }
+
+/* ── TIPO SELECTOR ── */
+.tipo-selector { display: flex; gap: 6px; margin-bottom: 10px; }
+.tipo-btn { flex: 1; padding: 8px 4px; border: 2px solid #ddd; border-radius: 8px; background: white; font-size: 12px; font-weight: bold; cursor: pointer; text-align: center; color: #666; }
+.tipo-btn.active-herr { border-color: #2E75B6; background: #EBF3FB; color: #1F3864; }
+.tipo-btn.active-insu { border-color: #F4B942; background: #FFF9E6; color: #856404; }
+.tipo-btn.active-mate { border-color: #375623; background: #E2EFDA; color: #375623; }
+
+/* ── ITEM ROWS EN LISTA ── */
+.item-row { display: flex; align-items: flex-start; gap: 8px; padding: 10px; background: #f8f9fa; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid #2E75B6; }
+.item-row.tipo-insu { border-left-color: #F4B942; }
+.item-row.tipo-mate { border-left-color: #375623; }
+.item-row .item-info { flex: 1; min-width: 0; }
+.item-row .item-tipo { font-size: 11px; margin-bottom: 3px; }
+.item-row .item-desc { font-size: 13px; font-weight: bold; color: #1F3864; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-row .item-detalle { font-size: 11px; color: #888; margin-top: 2px; }
+.item-row .item-obs { font-size: 12px; padding: 6px 8px; margin-top: 6px; margin-bottom: 0; }
+
+/* ── CANTIDAD ── */
+.qty-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.qty-row input[type=number] { width: 70px; padding: 6px; font-size: 13px; text-align: center; margin-bottom: 0; }
+.qty-row span { font-size: 12px; color: #666; }
+
+/* ── MENSAJES ── */
+.msg-ok  { background: #E2EFDA; color: #375623; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 10px; }
+.msg-err { background: #FCE4D6; color: #C00000; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
+.loading { text-align: center; padding: 20px; color: #666; font-size: 13px; }
+
+/* ── PRÉSTAMO ACTIVO (devolución) ── */
+.prestamo-activo { border: 2px solid #F4B942; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #FFFDE7; }
+.prestamo-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.prestamo-id { font-size: 11px; color: #888; }
+.prestamo-fecha { font-size: 11px; color: #888; }
+.devolucion-item { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+.devolucion-item .dev-header { font-size: 13px; font-weight: bold; color: #1F3864; margin-bottom: 6px; }
+.devolucion-item select { margin-bottom: 4px; }
+
+/* ── HISTORIAL ── */
+.hist-row { background: white; border-radius: 8px; padding: 12px; margin-bottom: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid #2E75B6; }
+.hist-row.abierto { border-left-color: #F4B942; }
+.hist-row.cerrado { border-left-color: #375623; }
+.hist-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.hist-id { font-size: 11px; color: #888; }
+.hist-estado { font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 10px; }
+.hist-estado.abierto { background: #FFF3CD; color: #856404; }
+.hist-estado.cerrado { background: #E2EFDA; color: #375623; }
+.hist-trabajador { font-size: 14px; font-weight: bold; color: #1F3864; }
+.hist-items { font-size: 12px; color: #555; margin-top: 4px; }
+.hist-fecha { font-size: 11px; color: #888; margin-top: 4px; }
+.filtro-row { display: flex; gap: 6px; margin-bottom: 12px; }
+.filtro-row input, .filtro-row select { margin-bottom: 0; font-size: 13px; }
+
+/* ── QR SCANNER ── */
+.qr-wrapper { display: none; margin-bottom: 10px; }
+.qr-box { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; max-height: 260px; }
+.qr-box video { width: 100%; display: block; max-height: 260px; object-fit: cover; }
+.qr-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.qr-finder { width: 55%; aspect-ratio: 1; position: relative; }
+.qr-finder::before, .qr-finder::after,
+.qr-finder span::before, .qr-finder span::after {
+  content: ''; position: absolute; width: 22px; height: 22px;
+  border-color: #F4B942; border-style: solid;
+}
+.qr-finder::before  { top: 0;    left: 0;  border-width: 3px 0 0 3px; }
+.qr-finder::after   { top: 0;    right: 0; border-width: 3px 3px 0 0; }
+.qr-finder span::before { bottom: 0; left: 0;  border-width: 0 0 3px 3px; }
+.qr-finder span::after  { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+.qr-label { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; color: white; font-size: 12px; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+.qr-flash { position: absolute; inset: 0; background: rgba(55,86,35,0.5); border-radius: 10px; opacity: 0; pointer-events: none; transition: opacity 0.08s; }
+.qr-flash.show { opacity: 1; }
+
+/* ── EMPTY STATE ── */
+.empty-state { text-align: center; padding: 30px 20px; color: #999; }
+.empty-state .empty-icon { font-size: 36px; margin-bottom: 8px; }
+.empty-state p { font-size: 13px; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>🏗 Almacén GT01</h1>
-  <span>Coatepeque · SOLTECING</span>
+  <div>
+    <h1>🏗 Almacén GT01</h1>
+    <span>Coatepeque · SOLTECING</span>
+  </div>
 </div>
 
 <div class="tabs">
-  <div class="tab active" onclick="showTab('prestamo')">📤 Préstamo</div>
-  <div class="tab" onclick="showTab('devolucion')">📥 Devolución</div>
+  <div class="tab active"  onclick="showTab('prestamo')">📤 Préstamo</div>
+  <div class="tab"         onclick="showTab('devolucion')">📥 Devolución</div>
+  <div class="tab"         onclick="showTab('historial')">📋 Historial</div>
 </div>
 
-<!-- ══════════════ PANTALLA PRÉSTAMO ══════════════ -->
+<!-- ══════════════════════════════════════════════════
+     PANTALLA 1 — PRÉSTAMO
+═══════════════════════════════════════════════════ -->
 <div id="screen-prestamo" class="screen active">
-  <div class="card">
-    <div class="card-title">👤 Identificar Trabajador</div>
-    <button class="btn btn-scan" id="btn-qr-pre" onclick="toggleQR('pre')">📷 Escanear QR</button>
 
-    <!-- Contenedor del escáner: préstamo -->
+  <!-- Paso 1: Identificar trabajador -->
+  <div class="card">
+    <div class="card-title">👤 Paso 1 — Trabajador</div>
+    <button class="btn btn-scan" id="btn-qr-pre" onclick="toggleQR('pre')">📷 Escanear QR del trabajador</button>
     <div class="qr-wrapper" id="wrap-pre">
       <div class="qr-box">
         <video id="vid-pre" autoplay playsinline muted></video>
-        <canvas id="cvs-pre" style="display:none"></canvas>
         <div class="qr-overlay"><div class="qr-finder"><span></span></div></div>
-        <div class="qr-label">Apunta al código QR del trabajador</div>
+        <div class="qr-label">Centra el QR dentro del recuadro</div>
         <div class="qr-flash" id="flash-pre"></div>
       </div>
     </div>
-
-    <input type="text" id="buscar-trabajador" placeholder="O escribe nombre o número (ej: 001)" oninput="buscarTrabajador(this.value)">
+    <input type="text" id="buscar-trabajador" placeholder="O escribe nombre / número (ej: 001)" oninput="buscarTrabajador(this.value)">
     <div class="sugerencias" id="sug-trabajador"></div>
     <div id="trabajador-sel" style="display:none"></div>
   </div>
 
+  <!-- Paso 2: Agregar ítems (visible tras seleccionar trabajador) -->
   <div class="card" id="card-items" style="display:none">
-    <div class="card-title">🔧 Agregar Herramientas / Insumos</div>
-    <input type="text" id="buscar-item" placeholder="Buscar por código o nombre..." oninput="buscarItem(this.value)">
+    <div class="card-title">🔧 Paso 2 — Agregar ítems</div>
+
+    <!-- Selector de tipo -->
+    <div class="tipo-selector">
+      <button class="tipo-btn active-herr" id="tbtn-herr" onclick="setTipo('Herramienta')">🔨 Herramienta</button>
+      <button class="tipo-btn" id="tbtn-insu" onclick="setTipo('Insumo')">🧰 Insumo</button>
+      <button class="tipo-btn" id="tbtn-mate" onclick="setTipo('Material')">🔩 Material</button>
+    </div>
+
+    <input type="text" id="buscar-item" placeholder="Buscar por código o descripción..." oninput="buscarItem(this.value)">
     <div class="sugerencias" id="sug-item"></div>
+
+    <!-- Lista de ítems agregados -->
     <div id="lista-items"></div>
-    <button class="btn btn-success" id="btn-guardar" style="display:none" onclick="guardarPrestamo()">✅ Guardar Préstamo</button>
+
+    <button class="btn btn-success" id="btn-guardar" style="display:none" onclick="guardarPrestamo()">
+      ✅ Registrar Préstamo
+    </button>
   </div>
+
   <div id="res-prestamo"></div>
 </div>
 
-<!-- ══════════════ PANTALLA DEVOLUCIÓN ══════════════ -->
+<!-- ══════════════════════════════════════════════════
+     PANTALLA 2 — DEVOLUCIÓN
+═══════════════════════════════════════════════════ -->
 <div id="screen-devolucion" class="screen">
+
   <div class="card">
     <div class="card-title">👤 Identificar Trabajador</div>
-    <button class="btn btn-scan" id="btn-qr-dev" onclick="toggleQR('dev')">📷 Escanear QR</button>
-
-    <!-- Contenedor del escáner: devolución -->
+    <button class="btn btn-scan" id="btn-qr-dev" onclick="toggleQR('dev')">📷 Escanear QR del trabajador</button>
     <div class="qr-wrapper" id="wrap-dev">
       <div class="qr-box">
         <video id="vid-dev" autoplay playsinline muted></video>
-        <canvas id="cvs-dev" style="display:none"></canvas>
         <div class="qr-overlay"><div class="qr-finder"><span></span></div></div>
-        <div class="qr-label">Apunta al código QR del trabajador</div>
+        <div class="qr-label">Centra el QR dentro del recuadro</div>
         <div class="qr-flash" id="flash-dev"></div>
       </div>
     </div>
-
-    <input type="text" id="buscar-trabajador-dev" placeholder="O escribe nombre o número (ej: 001)" oninput="buscarTrabajadorDev(this.value)">
+    <input type="text" id="buscar-trabajador-dev" placeholder="O escribe nombre / número (ej: 001)" oninput="buscarTrabajadorDev(this.value)">
     <div class="sugerencias" id="sug-trabajador-dev"></div>
   </div>
+
   <div id="prestamos-activos"></div>
   <div id="res-devolucion"></div>
 </div>
 
-<!-- ZXing: librería de Google, mucho más robusta en móvil que jsQR -->
-<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+<!-- ══════════════════════════════════════════════════
+     PANTALLA 3 — HISTORIAL
+═══════════════════════════════════════════════════ -->
+<div id="screen-historial" class="screen">
+  <div class="card">
+    <div class="card-title">🔍 Filtrar</div>
+    <div class="filtro-row">
+      <input type="text" id="filtro-q" placeholder="Trabajador o herramienta..." style="flex:1">
+      <select id="filtro-estado" style="width:130px">
+        <option value="">Todos</option>
+        <option value="abierto">Abiertos</option>
+        <option value="cerrado">Cerrados</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="cargarHistorial()">🔄 Buscar</button>
+  </div>
+  <div id="lista-historial">
+    <div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <p>Usa el filtro para buscar registros</p>
+    </div>
+  </div>
+</div>
 
+<!-- ══════════════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════════════ -->
+<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <script>
+
 // ════════════════════════════════════════════════
 //  CONFIGURACIÓN
 // ════════════════════════════════════════════════
 const API = "https://script.google.com/macros/s/AKfycbwZbAFPrA8ZvAeLvt4mJE_L0pjL_3SfrXE4JuvBaaKgzO98jL8gI7jh0Co9d13BhfkyVQ/exec";
 
-let trabajadorActual = null;
+// ── Estado global ──
+let trabajadorActual  = null;
 let itemsSeleccionados = [];
+let tipoActual        = 'Herramienta';
 
-// Estado global del escáner ZXing
-const qr = {
-  reader:   null,   // instancia ZXing
-  mode:     null,   // 'pre' | 'dev'
-  active:   false
-};
+// ── Estado escáner ZXing ──
+const qr = { reader: null, mode: null, active: false };
 
 // ════════════════════════════════════════════════
 //  TABS
 // ════════════════════════════════════════════════
 function showTab(tab) {
   document.querySelectorAll('.tab').forEach((t, i) =>
-    t.classList.toggle('active', ['prestamo','devolucion'][i] === tab));
+    t.classList.toggle('active', ['prestamo','devolucion','historial'][i] === tab));
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + tab).classList.add('active');
-  // Si se cambia de tab, detener cámara activa
   stopQR();
 }
 
 // ════════════════════════════════════════════════
-//  PITIDO — Web Audio API (sin dependencias)
+//  PITIDO — Web Audio API
 // ════════════════════════════════════════════════
 function beep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+    osc.connect(gain); gain.connect(ctx.destination);
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(1046, ctx.currentTime);      // Do6
-    gain.gain.setValueAtTime(0.6, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.25);
-  } catch(e) { /* silencioso si el navegador bloquea */ }
+    osc.frequency.setValueAtTime(1046, ctx.currentTime);
+    gain.gain.setValueAtTime(0.5, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+  } catch(e) {}
 }
 
 // ════════════════════════════════════════════════
@@ -215,11 +301,11 @@ function flashGreen(mode) {
   const el = document.getElementById('flash-' + mode);
   if (!el) return;
   el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 300);
+  setTimeout(() => el.classList.remove('show'), 350);
 }
 
 // ════════════════════════════════════════════════
-//  ESCÁNER QR con ZXing (Google)
+//  ESCÁNER QR — ZXing (Google)
 // ════════════════════════════════════════════════
 function toggleQR(mode) {
   if (qr.active && qr.mode === mode) { stopQR(); return; }
@@ -230,77 +316,62 @@ function toggleQR(mode) {
   const btn  = document.getElementById('btn-qr-' + mode);
 
   if (typeof ZXing === 'undefined') {
-    alert('Error cargando el escáner. Verifica tu conexión a internet.');
+    alert('Error cargando escáner. Verifica tu conexión.');
     return;
   }
 
   wrap.style.display = 'block';
-  btn.textContent    = '⏹ Detener cámara';
+  btn.textContent    = '⏹ Cerrar cámara';
   qr.mode   = mode;
   qr.active = true;
 
-  // Crear lector ZXing optimizado para QR
   const hints = new Map();
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-
   qr.reader = new ZXing.BrowserQRCodeReader(hints);
 
-  // ZXing maneja la cámara y el loop internamente
-  qr.reader.decodeFromVideoDevice(
-    undefined,   // undefined = cámara trasera automáticamente
-    vid,
-    (result, err) => {
-      if (!result) return;
-      if (!qr.active) return;
+  qr.reader.decodeFromVideoDevice(undefined, vid, (result, err) => {
+    if (!result || !qr.active) return;
+    const valor = result.getText().trim();
+    if (!valor) return;
 
-      const valor = result.getText().trim();
-      if (!valor) return;
+    beep();
+    flashGreen(mode);
+    stopQR();
 
-      beep();
-      flashGreen(mode);
-      stopQR();
-
-      if (mode === 'dev') {
-        document.getElementById('buscar-trabajador-dev').value = valor;
-        buscarTrabajadorDev(valor);
-      } else {
-        document.getElementById('buscar-trabajador').value = valor;
-        buscarTrabajador(valor);
-      }
+    if (mode === 'dev') {
+      document.getElementById('buscar-trabajador-dev').value = valor;
+      buscarTrabajadorDev(valor);
+    } else {
+      document.getElementById('buscar-trabajador').value = valor;
+      buscarTrabajador(valor);
     }
-  ).catch(err => {
+  }).catch(err => {
     wrap.style.display = 'none';
-    btn.textContent    = '📷 Escanear QR';
-    qr.active = false;
-    qr.mode   = null;
+    btn.textContent    = '📷 Escanear QR del trabajador';
+    qr.active = false; qr.mode = null;
     alert('No se pudo acceder a la cámara: ' + err.message);
   });
 }
 
-// Detener ZXing y liberar cámara
 function stopQR() {
-  if (qr.reader) {
-    try { qr.reader.reset(); } catch(e) {}
-    qr.reader = null;
-  }
+  if (qr.reader) { try { qr.reader.reset(); } catch(e) {} qr.reader = null; }
   qr.active = false;
-
   if (qr.mode) {
     const wrap = document.getElementById('wrap-' + qr.mode);
     const vid  = document.getElementById('vid-'  + qr.mode);
     const btn  = document.getElementById('btn-qr-' + qr.mode);
     if (wrap) wrap.style.display = 'none';
     if (vid)  { try { vid.srcObject = null; } catch(e) {} }
-    if (btn)  btn.textContent = '📷 Escanear QR';
+    if (btn)  btn.textContent = '📷 Escanear QR del trabajador';
   }
   qr.mode = null;
 }
 
 // ════════════════════════════════════════════════
-//  API CALLS
+//  API HELPERS
 // ════════════════════════════════════════════════
-async function apiCall(action, params = {}) {
+async function apiGet(action, params = {}) {
   const url = API + '?action=' + action + '&' + new URLSearchParams(params);
   const res = await fetch(url);
   return res.json();
@@ -316,7 +387,7 @@ async function apiPost(action, data) {
 }
 
 // ════════════════════════════════════════════════
-//  BUSCAR TRABAJADOR (Préstamo)
+//  BUSCAR TRABAJADOR (préstamo)
 // ════════════════════════════════════════════════
 let timerT;
 function buscarTrabajador(val) {
@@ -325,16 +396,16 @@ function buscarTrabajador(val) {
   if (!val || val.length < 1) { div.style.display = 'none'; return; }
   timerT = setTimeout(async () => {
     try {
-      const data = await apiCall('buscarTrabajador', { q: val });
+      const data = await apiGet('buscarTrabajador', { q: val });
       if (!data.length) { div.style.display = 'none'; return; }
       div.innerHTML = data.map(t => `
-        <div class="sugerencia-item" onclick="selTrabajador('${t.codigo}','${esc(t.nombre)}','${esc(t.cargo)}')">
+        <div class="sugerencia-item" onclick="selTrabajador('${esc(t.codigo)}','${esc(t.nombre)}','${esc(t.cargo)}')">
           <div class="s-nombre">${t.nombre || '[Sin nombre]'}</div>
-          <div class="s-cod">${t.codigo} · ${t.cargo}</div>
+          <div class="s-cod">${t.codigo} · ${t.cargo || '—'}</div>
         </div>`).join('');
       div.style.display = 'block';
     } catch(e) { div.style.display = 'none'; }
-  }, 400);
+  }, 380);
 }
 
 function selTrabajador(codigo, nombre, cargo) {
@@ -343,17 +414,38 @@ function selTrabajador(codigo, nombre, cargo) {
   document.getElementById('buscar-trabajador').value = nombre;
   document.getElementById('trabajador-sel').innerHTML = `
     <div class="trabajador-card">
-      <div class="nombre">👷 ${nombre || '[Sin nombre]'}</div>
-      <div class="codigo">${codigo} · ${cargo}</div>
+      <div class="avatar">👷</div>
+      <div>
+        <div class="tw-nombre">${nombre}</div>
+        <div class="tw-cod">${codigo} · ${cargo || '—'}</div>
+      </div>
     </div>`;
   document.getElementById('trabajador-sel').style.display = 'block';
   document.getElementById('card-items').style.display = 'block';
   itemsSeleccionados = [];
+  setTipo('Herramienta');
   renderItems();
 }
 
 // ════════════════════════════════════════════════
-//  BUSCAR ITEMS
+//  SELECTOR DE TIPO
+// ════════════════════════════════════════════════
+function setTipo(tipo) {
+  tipoActual = tipo;
+  document.getElementById('tbtn-herr').className = 'tipo-btn' + (tipo==='Herramienta'?' active-herr':'');
+  document.getElementById('tbtn-insu').className = 'tipo-btn' + (tipo==='Insumo'?' active-insu':'');
+  document.getElementById('tbtn-mate').className = 'tipo-btn' + (tipo==='Material'?' active-mate':'');
+  document.getElementById('buscar-item').value = '';
+  document.getElementById('sug-item').style.display = 'none';
+  // Actualizar placeholder según tipo
+  const ph = tipo === 'Herramienta' ? 'Buscar herramienta...' :
+             tipo === 'Insumo'      ? 'Buscar insumo (cinta, precaución...)' :
+                                      'Buscar material (perno, tornillo...)';
+  document.getElementById('buscar-item').placeholder = ph;
+}
+
+// ════════════════════════════════════════════════
+//  BUSCAR ÍTEMS (herramientas / insumos / materiales)
 // ════════════════════════════════════════════════
 let timerI;
 function buscarItem(val) {
@@ -362,22 +454,47 @@ function buscarItem(val) {
   if (!val || val.length < 1) { div.style.display = 'none'; return; }
   timerI = setTimeout(async () => {
     try {
-      const data = await apiCall('buscarItem', { q: val });
+      const data = await apiGet('buscarItem', { q: val, tipo: tipoActual });
       if (!data.length) { div.style.display = 'none'; return; }
       div.innerHTML = data.map(i => `
-        <div class="sugerencia-item" onclick="addItem('${i.codigo}','${esc(i.descripcion)}','${i.tipo}')">
+        <div class="sugerencia-item" onclick="addItem('${esc(i.codigo)}','${esc(i.descripcion)}','${esc(i.tipo)}','${esc(i.unidad||'')}')">
           <div class="s-nombre">${i.descripcion}</div>
-          <div class="s-cod"><span class="badge badge-${i.tipo==='Herramienta'?'herr':'insu'}">${i.tipo}</span> ${i.codigo}</div>
+          <div class="s-cod">
+            <span class="badge badge-${badgeClass(i.tipo)}">${i.tipo}</span>
+            ${i.codigo}${i.unidad ? ' · ' + i.unidad : ''}
+          </div>
         </div>`).join('');
       div.style.display = 'block';
     } catch(e) { div.style.display = 'none'; }
-  }, 400);
+  }, 380);
 }
 
-function addItem(codigo, descripcion, tipo) {
+function badgeClass(tipo) {
+  if (tipo === 'Herramienta') return 'herr';
+  if (tipo === 'Insumo')      return 'insu';
+  return 'mate';
+}
+
+// ── Agregar ítem a la lista ──
+function addItem(codigo, descripcion, tipo, unidad) {
   document.getElementById('sug-item').style.display = 'none';
   document.getElementById('buscar-item').value = '';
-  itemsSeleccionados.push({ codigo, descripcion, tipo, obs: '' });
+
+  // Para herramientas, verificar que no esté duplicada
+  if (tipo === 'Herramienta' && itemsSeleccionados.find(i => i.codigo === codigo)) {
+    alert('Esta herramienta ya está en la lista.');
+    return;
+  }
+
+  itemsSeleccionados.push({
+    codigo,
+    descripcion,
+    tipo,
+    unidad:   unidad || '',
+    cantidad: 1,
+    detalle:  '',   // descripción adicional (color, marca, etc.)
+    obs:      ''    // observación
+  });
   renderItems();
 }
 
@@ -386,22 +503,50 @@ function removeItem(idx) {
   renderItems();
 }
 
+// ── Renderizar lista de ítems ──
 function renderItems() {
   const div = document.getElementById('lista-items');
   if (!itemsSeleccionados.length) {
-    div.innerHTML = '<p style="color:#999;text-align:center;padding:10px;font-size:13px">Sin items agregados</p>';
+    div.innerHTML = `<div class="empty-state" style="padding:16px">
+      <div class="empty-icon">📦</div>
+      <p>Agrega herramientas, insumos o materiales</p>
+    </div>`;
     document.getElementById('btn-guardar').style.display = 'none';
     return;
   }
-  div.innerHTML = itemsSeleccionados.map((it, i) => `
-    <div class="item-row">
+
+  div.innerHTML = itemsSeleccionados.map((it, i) => {
+    const bc   = badgeClass(it.tipo);
+    const esHerr = it.tipo === 'Herramienta';
+    const esMate = it.tipo === 'Material';
+    return `
+    <div class="item-row tipo-${bc}">
       <div class="item-info">
-        <div class="item-cod"><span class="badge badge-${it.tipo==='Herramienta'?'herr':'insu'}">${it.tipo}</span> ${it.codigo}</div>
+        <div class="item-tipo"><span class="badge badge-${bc}">${it.tipo}</span> <span style="color:#888;font-size:11px">${it.codigo}</span></div>
         <div class="item-desc">${it.descripcion}</div>
-        <input type="text" placeholder="Observación (opcional)" style="margin-top:4px;font-size:12px;padding:6px" onchange="itemsSeleccionados[${i}].obs=this.value">
+        ${esHerr ? `
+        <input class="item-obs" type="text" placeholder="Descripción adicional (ej: amarillo, mango rojo...)"
+               value="${esc(it.detalle)}" onchange="itemsSeleccionados[${i}].detalle=this.value"
+               style="margin-top:5px;font-size:12px;padding:6px">` : ''}
+        ${esMate ? `
+        <div class="qty-row">
+          <input type="number" min="1" value="${it.cantidad}"
+                 onchange="itemsSeleccionados[${i}].cantidad=parseInt(this.value)||1">
+          <span>${it.unidad || 'und'}</span>
+        </div>` : ''}
+        ${!esHerr ? `
+        <input class="item-obs" type="text" placeholder="Observación (opcional)"
+               value="${esc(it.obs)}" onchange="itemsSeleccionados[${i}].obs=this.value"
+               style="margin-top:5px;font-size:12px;padding:6px">` : ''}
+        ${esHerr ? `
+        <input class="item-obs" type="text" placeholder="Observación (opcional)"
+               value="${esc(it.obs)}" onchange="itemsSeleccionados[${i}].obs=this.value"
+               style="margin-top:4px;font-size:12px;padding:6px">` : ''}
       </div>
-      <button class="btn btn-danger btn-sm" onclick="removeItem(${i})">✕</button>
-    </div>`).join('');
+      <button class="btn btn-danger btn-sm" onclick="removeItem(${i})" style="flex-shrink:0">✕</button>
+    </div>`;
+  }).join('');
+
   document.getElementById('btn-guardar').style.display = 'block';
 }
 
@@ -411,31 +556,41 @@ function renderItems() {
 async function guardarPrestamo() {
   if (!trabajadorActual || !itemsSeleccionados.length) return;
   const btn = document.getElementById('btn-guardar');
-  btn.textContent = 'Guardando...';
+  btn.textContent = '⏳ Guardando...';
   btn.disabled = true;
+
   try {
     const res = await apiPost('guardarPrestamo', {
       codigoTrabajador: trabajadorActual.codigo,
       nombreTrabajador: trabajadorActual.nombre,
+      cargoTrabajador:  trabajadorActual.cargo,
       items: itemsSeleccionados
     });
-    document.getElementById('res-prestamo').innerHTML =
-      `<div class="msg-ok">✅ Préstamo ${res.idPrestamo} registrado</div>`;
-    trabajadorActual = null;
+
+    const hora = new Date().toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('res-prestamo').innerHTML = `
+      <div class="msg-ok">
+        ✅ Préstamo <strong>${res.idPrestamo || ''}</strong> registrado a las ${hora}<br>
+        <small>${trabajadorActual.nombre} · ${itemsSeleccionados.length} ítem(s)</small>
+      </div>`;
+
+    // Limpiar formulario
+    trabajadorActual  = null;
     itemsSeleccionados = [];
     document.getElementById('buscar-trabajador').value = '';
     document.getElementById('trabajador-sel').style.display = 'none';
     document.getElementById('card-items').style.display = 'none';
   } catch(e) {
     document.getElementById('res-prestamo').innerHTML =
-      `<div class="msg-err">❌ Error: ${e.message}</div>`;
+      `<div class="msg-err">❌ Error al guardar: ${e.message}</div>`;
   }
-  btn.textContent = '✅ Guardar Préstamo';
+
+  btn.textContent = '✅ Registrar Préstamo';
   btn.disabled = false;
 }
 
 // ════════════════════════════════════════════════
-//  DEVOLUCIÓN
+//  DEVOLUCIÓN — buscar trabajador
 // ════════════════════════════════════════════════
 let timerTD;
 function buscarTrabajadorDev(val) {
@@ -444,65 +599,93 @@ function buscarTrabajadorDev(val) {
   if (!val || val.length < 1) { div.style.display = 'none'; return; }
   timerTD = setTimeout(async () => {
     try {
-      const data = await apiCall('buscarTrabajador', { q: val });
+      const data = await apiGet('buscarTrabajador', { q: val });
       if (!data.length) { div.style.display = 'none'; return; }
       div.innerHTML = data.map(t => `
-        <div class="sugerencia-item" onclick="cargarPrestamos('${t.codigo}','${esc(t.nombre)}')">
+        <div class="sugerencia-item" onclick="cargarPrestamos('${esc(t.codigo)}','${esc(t.nombre)}')">
           <div class="s-nombre">${t.nombre || '[Sin nombre]'}</div>
-          <div class="s-cod">${t.codigo}</div>
+          <div class="s-cod">${t.codigo} · ${t.cargo || '—'}</div>
         </div>`).join('');
       div.style.display = 'block';
     } catch(e) { div.style.display = 'none'; }
-  }, 400);
+  }, 380);
 }
 
+// ── Cargar préstamos activos del trabajador ──
 async function cargarPrestamos(codigo, nombre) {
   document.getElementById('sug-trabajador-dev').style.display = 'none';
   document.getElementById('buscar-trabajador-dev').value = nombre;
-  document.getElementById('prestamos-activos').innerHTML = '<div class="loading">🔄 Cargando...</div>';
+  document.getElementById('prestamos-activos').innerHTML = '<div class="loading">🔄 Cargando préstamos...</div>';
+
   try {
-    const data = await apiCall('prestamosActivos', { codigo });
+    const data = await apiGet('prestamosActivos', { codigo });
+
     if (!data.length) {
-      document.getElementById('prestamos-activos').innerHTML =
-        '<div class="card"><p style="text-align:center;color:#666;padding:10px">Sin préstamos activos</p></div>';
+      document.getElementById('prestamos-activos').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">✅</div>
+          <p>${nombre} no tiene préstamos abiertos</p>
+        </div>`;
       return;
     }
-    document.getElementById('prestamos-activos').innerHTML = data.map(p => `
+
+    // Solo mostrar herramientas para devolución (insumos y materiales no se devuelven)
+    document.getElementById('prestamos-activos').innerHTML = data.map(p => {
+      const herramientas = (p.items || []).filter(it => it.tipo === 'Herramienta' || !it.tipo);
+      if (!herramientas.length) return '';
+      return `
       <div class="prestamo-activo">
-        <div style="font-size:12px;color:#666">${p.idPrestamo} · ${p.fecha}</div>
-        <div style="font-size:15px;font-weight:bold;color:#1F3864;margin-bottom:8px">👷 ${nombre}</div>
-        ${p.items.map(it => `
+        <div class="prestamo-header">
+          <div>
+            <div class="prestamo-id">📄 ${p.idPrestamo}</div>
+            <div style="font-size:14px;font-weight:bold;color:#1F3864;margin-top:2px">👷 ${nombre}</div>
+          </div>
+          <div class="prestamo-fecha">${p.fecha || ''}</div>
+        </div>
+
+        ${herramientas.map(it => `
           <div class="devolucion-item">
-            <label>${it.descripcion} <span class="badge badge-herr">${it.codigo}</span></label>
+            <div class="dev-header">
+              🔨 ${it.descripcion}
+              <span class="badge badge-herr" style="margin-left:4px">${it.codigo}</span>
+              ${it.detalle ? `<span style="font-size:11px;color:#888;display:block;margin-top:2px">${it.detalle}</span>` : ''}
+            </div>
+            <label class="field-label">Estado al devolver:</label>
             <select id="est-${it.idDetalle}">
               <option value="Bueno">✅ Bueno</option>
               <option value="Con daño">⚠️ Con daño</option>
-              <option value="Perdida">❌ Perdida</option>
+              <option value="Perdida">❌ Pérdida</option>
             </select>
-            <input type="text" id="obs-${it.idDetalle}" placeholder="Observación (opcional)">
+            <input type="text" id="obs-${it.idDetalle}" placeholder="Observación (opcional)" style="margin-bottom:0">
           </div>`).join('')}
-        <button class="btn btn-success" onclick="confirmarDev('${p.idPrestamo}', ${JSON.stringify(p.items).replace(/"/g,"'")})">
+
+        <button class="btn btn-success" onclick="confirmarDev('${p.idPrestamo}', ${JSON.stringify(herramientas).replace(/"/g,"'")})">
           📥 Confirmar Devolución
         </button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
+
   } catch(e) {
     document.getElementById('prestamos-activos').innerHTML =
       `<div class="msg-err">❌ Error cargando préstamos: ${e.message}</div>`;
   }
 }
 
+// ── Confirmar devolución ──
 async function confirmarDev(idPrestamo, items) {
   const devueltos = items.map(it => ({
     idDetalle: it.idDetalle,
     estado: document.getElementById('est-' + it.idDetalle)?.value || 'Bueno',
     obs:    document.getElementById('obs-' + it.idDetalle)?.value || ''
   }));
+
   try {
     await apiPost('cerrarPrestamo', { idPrestamo, items: devueltos });
     document.getElementById('res-devolucion').innerHTML =
-      '<div class="msg-ok">✅ Devolución registrada</div>';
+      '<div class="msg-ok">✅ Devolución registrada correctamente</div>';
     document.getElementById('prestamos-activos').innerHTML = '';
     document.getElementById('buscar-trabajador-dev').value = '';
+    setTimeout(() => { document.getElementById('res-devolucion').innerHTML = ''; }, 4000);
   } catch(e) {
     document.getElementById('res-devolucion').innerHTML =
       `<div class="msg-err">❌ Error: ${e.message}</div>`;
@@ -510,11 +693,47 @@ async function confirmarDev(idPrestamo, items) {
 }
 
 // ════════════════════════════════════════════════
-//  UTILIDAD — escapar comillas simples en atributos onclick
+//  HISTORIAL
+// ════════════════════════════════════════════════
+async function cargarHistorial() {
+  const q      = document.getElementById('filtro-q').value.trim();
+  const estado = document.getElementById('filtro-estado').value;
+  const div    = document.getElementById('lista-historial');
+  div.innerHTML = '<div class="loading">🔄 Cargando historial...</div>';
+
+  try {
+    const data = await apiGet('historial', { q, estado });
+
+    if (!data.length) {
+      div.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>Sin resultados</p></div>`;
+      return;
+    }
+
+    div.innerHTML = data.map(p => `
+      <div class="hist-row ${p.estado}">
+        <div class="hist-meta">
+          <span class="hist-id">📄 ${p.idPrestamo}</span>
+          <span class="hist-estado ${p.estado}">${p.estado === 'abierto' ? '🟡 Abierto' : '🟢 Devuelto'}</span>
+        </div>
+        <div class="hist-trabajador">👷 ${p.nombreTrabajador}</div>
+        <div class="hist-items">${(p.items||[]).map(i =>
+          `<span class="badge badge-${badgeClass(i.tipo)}" style="margin-right:3px;margin-top:3px">${i.descripcion}</span>`
+        ).join('')}</div>
+        <div class="hist-fecha">📅 ${p.fecha || ''}${p.fechaCierre ? ' → ' + p.fechaCierre : ''}</div>
+      </div>`).join('');
+
+  } catch(e) {
+    div.innerHTML = `<div class="msg-err">❌ Error: ${e.message}</div>`;
+  }
+}
+
+// ════════════════════════════════════════════════
+//  UTILIDAD — escapar comillas simples
 // ════════════════════════════════════════════════
 function esc(str) {
-  return (str || '').replace(/'/g, "\\'");
+  return (str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
+
 </script>
 </body>
 </html>

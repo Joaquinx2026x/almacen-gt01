@@ -178,8 +178,7 @@ label.field-label { font-size: 12px; color: #666; margin-bottom: 2px; display: b
   <div class="card" id="card-items" style="display:none">
     <div class="card-title">🔧 Paso 2 — Agregar ítems</div>
 
-    <!-- Selector de tipo - todos en el mismo préstamo -->
-    <div style="font-size:11px;color:#666;margin-bottom:6px">Selecciona el tipo y agrega items al mismo préstamo:</div>
+    <!-- Selector de tipo -->
     <div class="tipo-selector">
       <button class="tipo-btn active-herr" id="tbtn-herr" onclick="setTipo('Herramienta')">🔨 Herramienta</button>
       <button class="tipo-btn" id="tbtn-insu" onclick="setTipo('Insumo')">🧰 Insumo</button>
@@ -378,27 +377,13 @@ async function apiGet(action, params = {}) {
   return res.json();
 }
 
-function jsonp(url) {
-  return new Promise((resolve, reject) => {
-    const cb = 'cb' + Date.now();
-    window[cb] = (d) => { delete window[cb]; document.getElementById('jsonp-'+cb)?.remove(); if(d&&d.error) reject(new Error(d.error)); else resolve(d); };
-    const s = document.createElement('script');
-    s.id = 'jsonp-'+cb;
-    s.onerror = () => reject(new Error('Error de conexion'));
-    s.src = url + '&callback=' + cb;
-    document.head.appendChild(s);
-  });
-}
-
-async function apiGet(action, params={}) {
-  let url = API+'?action='+action;
-  for(const k in params) url += '&'+k+'='+encodeURIComponent(params[k]);
-  return jsonp(url);
-}
-
 async function apiPost(action, data) {
-  const payload = encodeURIComponent(JSON.stringify({action,...data}));
-  return jsonp(API+'?action='+action+'&payload='+payload);
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...data })
+  });
+  return res.json();
 }
 
 // ════════════════════════════════════════════════

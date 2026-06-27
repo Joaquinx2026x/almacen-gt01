@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Almacén GT01</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #f0f4f8; color: #333; }
+  .header { background: #1F3864; color: white; padding: 12px 16px; }
+  .header h1 { font-size: 16px; }
+  .header span { font-size: 11px; color: #A8C8E8; }
+  .tabs { display: flex; background: #2E75B6; }
+  .tab { flex: 1; padding: 10px; text-align: center; color: #A8C8E8; font-size: 13px; cursor: pointer; border-bottom: 3px solid transparent; }
+  .tab.active { color: white; border-bottom-color: #F4B942; font-weight: bold; }
+  .screen { display: none; padding: 12px; }
+  .screen.active { display: block; }
+  .card { background: white; border-radius: 8px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .card-title { font-size: 13px; font-weight: bold; color: #1F3864; margin-bottom: 10px; border-bottom: 1px solid #EBF3FB; padding-bottom: 6px; }
+  input, select, textarea { width: 100%; padding: 10px; border: 1px solid #BDD7EE; border-radius: 6px; font-size: 14px; margin-bottom: 8px; }
+  textarea { height: 60px; resize: none; }
+  .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 8px; }
+  .btn-primary { background: #1F3864; color: white; }
+  .btn-scan { background: #2E75B6; color: white; }
+  .btn-success { background: #375623; color: white; }
+  .btn-danger { background: #C00000; color: white; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; width: auto; margin: 2px; }
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+  .badge-herr { background: #D6E4F0; color: #1F3864; }
+  .badge-insu { background: #E2EFDA; color: #375623; }
+  .trabajador-card { background: #EBF3FB; border: 2px solid #2E75B6; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+  .trabajador-card .nombre { font-size: 16px; font-weight: bold; color: #1F3864; }
+  .trabajador-card .codigo { font-size: 12px; color: #666; }
+  .item-row { display: flex; align-items: center; gap: 8px; padding: 8px; background: #f8f9fa; border-radius: 6px; margin-bottom: 6px; border-left: 3px solid #2E75B6; }
+  .item-row .item-info { flex: 1; }
+  .item-row .item-cod { font-size: 11px; color: #666; }
+  .item-row .item-desc { font-size: 13px; font-weight: bold; }
+  .sugerencias { background: white; border: 1px solid #BDD7EE; border-radius: 6px; max-height: 200px; overflow-y: auto; margin-top: -6px; margin-bottom: 8px; display: none; }
+  .sugerencia-item { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
+  .sugerencia-item:hover { background: #EBF3FB; }
+  .sugerencia-item .s-nombre { font-size: 14px; font-weight: bold; }
+  .sugerencia-item .s-cod { font-size: 11px; color: #666; }
+  .prestamo-activo { border: 2px solid #F4B942; border-radius: 8px; padding: 12px; margin-bottom: 10px; background: #FFFDE7; }
+  .loading { text-align: center; padding: 20px; color: #666; font-size: 13px; }
+  .msg-ok { background: #E2EFDA; color: #375623; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; margin-bottom: 10px; }
+  .msg-err { background: #FCE4D6; color: #C00000; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 10px; }
+  #qr-container { display: none; margin-bottom: 10px; position: relative; }
+  #qr-video { width: 100%; border-radius: 8px; }
+  .devolucion-item { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+  .devolucion-item label { font-size: 13px; font-weight: bold; display: block; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏗 Almacén GT01</h1>
+  <span>Coatepeque · SOLTECING</span>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('prestamo')">📤 Préstamo</div>
+  <div class="tab" onclick="showTab('devolucion')">📥 Devolución</div>
+</div>
+
+<div id="screen-prestamo" class="screen active">
+  <div class="card">
+    <div class="card-title">👤 Identificar Trabajador</div>
+    <button class="btn btn-scan" onclick="toggleQR()">📷 Escanear QR</button>
+    <div id="qr-container">
+      <video id="qr-video" autoplay playsinline></video>
+      <canvas id="qr-canvas" style="display:none"></canvas>
+    </div>
+    <input type="text" id="buscar-trabajador" placeholder="O escribe nombre o número (ej: 001)" oninput="buscarTrabajador(this.value)">
+    <div class="sugerencias" id="sug-trabajador"></div>
+    <div id="trabajador-sel" style="display:none"></div>
+  </div>
+
+  <div class="card" id="card-items" style="display:none">
+    <div class="card-title">🔧 Agregar Herramientas / Insumos</div>
+    <input type="text" id="buscar-item" placeholder="Buscar por código o nombre..." oninput="buscarItem(this.value)">
+    <div class="sugerencias" id="sug-item"></div>
+    <div id="lista-items"></div>
+    <button class="btn btn-success" id="btn-guardar" style="display:none" onclick="guardarPrestamo()">✅ Guardar Préstamo</button>
+  </div>
+  <div id="res-prestamo"></div>
+</div>
+
+<div id="screen-devolucion" class="screen">
+  <div class="card">
+    <div class="card-title">👤 Identificar Trabajador</div>
+    <button class="btn btn-scan" onclick="toggleQR('dev')">📷 Escanear QR</button>
+    <div id="qr-container-dev" style="display:none">
+      <video id="qr-video-dev" autoplay playsinline></video>
+      <canvas id="qr-canvas-dev" style="display:none"></canvas>
+    </div>
+    <input type="text" id="buscar-trabajador-dev" placeholder="O escribe nombre o número (ej: 001)" oninput="buscarTrabajadorDev(this.value)">
+    <div class="sugerencias" id="sug-trabajador-dev"></div>
+  </div>
+  <div id="prestamos-activos"></div>
+  <div id="res-devolucion"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+const API = "https://script.google.com/macros/s/AKfycbwZbAFPrA8ZvAeLvt4mJE_L0pjL_3SfrXE4JuvBaaKgzO98jL8gI7jh0Co9d13BhfkyVQ/exec";
+let trabajadorActual = null;
+let itemsSeleccionados = [];
+let qrStream = null;
+let qrScanning = false;
+
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['prestamo','devolucion'][i]===tab));
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-'+tab).classList.add('active');
+}
+
+// ── API CALLS ─────────────────────────────────────────────────
+async function apiCall(action, params={}) {
+  const url = API + '?action=' + action + '&' + new URLSearchParams(params);
+  const res = await fetch(url);
+  return res.json();
+}
+
+async function apiPost(action, data) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action, ...data})
+  });
+  return res.json();
+}
+
+// ── QR SCANNER ────────────────────────────────────────────────
+function toggleQR(mode) {
+  const suffix = mode === 'dev' ? '-dev' : '';
+  const container = document.getElementById('qr-container' + (mode?'-'+mode:''));
+  const video = document.getElementById('qr-video' + suffix);
+  const canvas = document.getElementById('qr-canvas' + suffix);
+
+  if (qrScanning) {
+    stopQR(video, container);
+    return;
+  }
+
+  container.style.display = 'block';
+  qrScanning = true;
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    .then(stream => {
+      qrStream = stream;
+      video.srcObject = stream;
+      video.play();
+      scanQR(video, canvas, mode);
+    })
+    .catch(err => {
+      container.style.display = 'none';
+      qrScanning = false;
+      alert('Error cámara: ' + err.message);
+    });
+}
+
+function scanQR(video, canvas, mode) {
+  if (!qrScanning) return;
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height);
+    if (code) {
+      stopQR(video, document.getElementById('qr-container' + (mode?'-'+mode:'')));
+      if (mode === 'dev') {
+        document.getElementById('buscar-trabajador-dev').value = code.data;
+        buscarTrabajadorDev(code.data);
+      } else {
+        document.getElementById('buscar-trabajador').value = code.data;
+        buscarTrabajador(code.data);
+      }
+      return;
+    }
+  }
+  requestAnimationFrame(() => scanQR(video, canvas, mode));
+}
+
+function stopQR(video, container) {
+  qrScanning = false;
+  if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+  if (container) container.style.display = 'none';
+}
+
+// ── BUSCAR TRABAJADOR ─────────────────────────────────────────
+let timerT;
+function buscarTrabajador(val) {
+  clearTimeout(timerT);
+  const div = document.getElementById('sug-trabajador');
+  if (!val || val.length < 1) { div.style.display='none'; return; }
+  timerT = setTimeout(async () => {
+    const data = await apiCall('buscarTrabajador', {q: val});
+    if (!data.length) { div.style.display='none'; return; }
+    div.innerHTML = data.map(t => `
+      <div class="sugerencia-item" onclick="selTrabajador('${t.codigo}','${t.nombre}','${t.cargo}')">
+        <div class="s-nombre">${t.nombre||'[Sin nombre]'}</div>
+        <div class="s-cod">${t.codigo} · ${t.cargo}</div>
+      </div>`).join('');
+    div.style.display = 'block';
+  }, 400);
+}
+
+function selTrabajador(codigo, nombre, cargo) {
+  trabajadorActual = {codigo, nombre, cargo};
+  document.getElementById('sug-trabajador').style.display = 'none';
+  document.getElementById('buscar-trabajador').value = nombre;
+  document.getElementById('trabajador-sel').innerHTML = `
+    <div class="trabajador-card">
+      <div class="nombre">👷 ${nombre||'[Sin nombre]'}</div>
+      <div class="codigo">${codigo} · ${cargo}</div>
+    </div>`;
+  document.getElementById('trabajador-sel').style.display = 'block';
+  document.getElementById('card-items').style.display = 'block';
+  itemsSeleccionados = [];
+  renderItems();
+}
+
+// ── BUSCAR ITEMS ──────────────────────────────────────────────
+let timerI;
+function buscarItem(val) {
+  clearTimeout(timerI);
+  const div = document.getElementById('sug-item');
+  if (!val || val.length < 1) { div.style.display='none'; return; }
+  timerI = setTimeout(async () => {
+    const data = await apiCall('buscarItem', {q: val});
+    if (!data.length) { div.style.display='none'; return; }
+    div.innerHTML = data.map(i => `
+      <div class="sugerencia-item" onclick="addItem('${i.codigo}','${i.descripcion}','${i.tipo}')">
+        <div class="s-nombre">${i.descripcion}</div>
+        <div class="s-cod"><span class="badge badge-${i.tipo==='Herramienta'?'herr':'insu'}">${i.tipo}</span> ${i.codigo}</div>
+      </div>`).join('');
+    div.style.display = 'block';
+  }, 400);
+}
+
+function addItem(codigo, descripcion, tipo) {
+  document.getElementById('sug-item').style.display = 'none';
+  document.getElementById('buscar-item').value = '';
+  itemsSeleccionados.push({codigo, descripcion, tipo, obs:''});
+  renderItems();
+}
+
+function removeItem(idx) {
+  itemsSeleccionados.splice(idx,1);
+  renderItems();
+}
+
+function renderItems() {
+  const div = document.getElementById('lista-items');
+  if (!itemsSeleccionados.length) {
+    div.innerHTML = '<p style="color:#999;text-align:center;padding:10px;font-size:13px">Sin items agregados</p>';
+    document.getElementById('btn-guardar').style.display = 'none';
+    return;
+  }
+  div.innerHTML = itemsSeleccionados.map((it,i) => `
+    <div class="item-row">
+      <div class="item-info">
+        <div class="item-cod"><span class="badge badge-${it.tipo==='Herramienta'?'herr':'insu'}">${it.tipo}</span> ${it.codigo}</div>
+        <div class="item-desc">${it.descripcion}</div>
+        <input type="text" placeholder="Observación (opcional)" style="margin-top:4px;font-size:12px;padding:6px" onchange="itemsSeleccionados[${i}].obs=this.value">
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="removeItem(${i})">✕</button>
+    </div>`).join('');
+  document.getElementById('btn-guardar').style.display = 'block';
+}
+
+// ── GUARDAR PRÉSTAMO ──────────────────────────────────────────
+async function guardarPrestamo() {
+  if (!trabajadorActual || !itemsSeleccionados.length) return;
+  const btn = document.getElementById('btn-guardar');
+  btn.textContent = 'Guardando...';
+  btn.disabled = true;
+  try {
+    const res = await apiPost('guardarPrestamo', {
+      codigoTrabajador: trabajadorActual.codigo,
+      nombreTrabajador: trabajadorActual.nombre,
+      items: itemsSeleccionados
+    });
+    document.getElementById('res-prestamo').innerHTML = `<div class="msg-ok">✅ Préstamo ${res.idPrestamo} registrado</div>`;
+    trabajadorActual = null;
+    itemsSeleccionados = [];
+    document.getElementById('buscar-trabajador').value = '';
+    document.getElementById('trabajador-sel').style.display = 'none';
+    document.getElementById('card-items').style.display = 'none';
+  } catch(e) {
+    document.getElementById('res-prestamo').innerHTML = `<div class="msg-err">❌ Error: ${e.message}</div>`;
+  }
+  btn.textContent = '✅ Guardar Préstamo';
+  btn.disabled = false;
+}
+
+// ── DEVOLUCIÓN ────────────────────────────────────────────────
+let timerTD;
+function buscarTrabajadorDev(val) {
+  clearTimeout(timerTD);
+  const div = document.getElementById('sug-trabajador-dev');
+  if (!val || val.length < 1) { div.style.display='none'; return; }
+  timerTD = setTimeout(async () => {
+    const data = await apiCall('buscarTrabajador', {q: val});
+    if (!data.length) { div.style.display='none'; return; }
+    div.innerHTML = data.map(t => `
+      <div class="sugerencia-item" onclick="cargarPrestamos('${t.codigo}','${t.nombre}')">
+        <div class="s-nombre">${t.nombre||'[Sin nombre]'}</div>
+        <div class="s-cod">${t.codigo}</div>
+      </div>`).join('');
+    div.style.display = 'block';
+  }, 400);
+}
+
+async function cargarPrestamos(codigo, nombre) {
+  document.getElementById('sug-trabajador-dev').style.display = 'none';
+  document.getElementById('buscar-trabajador-dev').value = nombre;
+  document.getElementById('prestamos-activos').innerHTML = '<div class="loading">🔄 Cargando...</div>';
+  const data = await apiCall('prestamosActivos', {codigo});
+  if (!data.length) {
+    document.getElementById('prestamos-activos').innerHTML = '<div class="card"><p style="text-align:center;color:#666;padding:10px">Sin préstamos activos</p></div>';
+    return;
+  }
+  document.getElementById('prestamos-activos').innerHTML = data.map(p => `
+    <div class="prestamo-activo">
+      <div style="font-size:12px;color:#666">${p.idPrestamo} · ${p.fecha}</div>
+      <div style="font-size:15px;font-weight:bold;color:#1F3864;margin-bottom:8px">👷 ${nombre}</div>
+      ${p.items.map(it => `
+        <div class="devolucion-item">
+          <label>${it.descripcion} <span class="badge badge-herr">${it.codigo}</span></label>
+          <select id="est-${it.idDetalle}">
+            <option value="Bueno">✅ Bueno</option>
+            <option value="Con daño">⚠️ Con daño</option>
+            <option value="Perdida">❌ Perdida</option>
+          </select>
+          <input type="text" id="obs-${it.idDetalle}" placeholder="Observación (opcional)">
+        </div>`).join('')}
+      <button class="btn btn-success" onclick="confirmarDev('${p.idPrestamo}', ${JSON.stringify(p.items).replace(/"/g,"'")})">
+        📥 Confirmar Devolución
+      </button>
+    </div>`).join('');
+}
+
+async function confirmarDev(idPrestamo, items) {
+  const devueltos = items.map(it => ({
+    idDetalle: it.idDetalle,
+    estado: document.getElementById('est-'+it.idDetalle)?.value || 'Bueno',
+    obs: document.getElementById('obs-'+it.idDetalle)?.value || ''
+  }));
+  try {
+    await apiPost('cerrarPrestamo', {idPrestamo, items: devueltos});
+    document.getElementById('res-devolucion').innerHTML = '<div class="msg-ok">✅ Devolución registrada</div>';
+    document.getElementById('prestamos-activos').innerHTML = '';
+    document.getElementById('buscar-trabajador-dev').value = '';
+  } catch(e) {
+    document.getElementById('res-devolucion').innerHTML = `<div class="msg-err">❌ Error: ${e.message}</div>`;
+  }
+}
+</script>
+</body>
+</html>

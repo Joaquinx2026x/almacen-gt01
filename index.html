@@ -398,6 +398,11 @@ function buscarTrabajador(val) {
     try {
       const data = await apiGet('buscarTrabajador', { q: val });
       if (!data.length) { div.style.display = 'none'; return; }
+      // Auto-select if exactly one result (QR scan returns exact code)
+      if (data.length === 1) {
+        selTrabajador(data[0].codigo, data[0].nombre, data[0].cargo);
+        return;
+      }
       div.innerHTML = data.map(t => `
         <div class="sugerencia-item" onclick="selTrabajador('${esc(t.codigo)}','${esc(t.nombre)}','${esc(t.cargo)}')">
           <div class="s-nombre">${t.nombre || '[Sin nombre]'}</div>
@@ -416,7 +421,7 @@ function selTrabajador(codigo, nombre, cargo) {
     <div class="trabajador-card">
       <div class="avatar">👷</div>
       <div>
-        <div class="tw-nombre">${nombre}</div>
+        <div class="tw-nombre">${nombre && nombre !== '[Sin nombre]' ? nombre : codigo}</div>
         <div class="tw-cod">${codigo} · ${cargo || '—'}</div>
       </div>
     </div>`;
@@ -601,6 +606,11 @@ function buscarTrabajadorDev(val) {
     try {
       const data = await apiGet('buscarTrabajador', { q: val });
       if (!data.length) { div.style.display = 'none'; return; }
+      // Auto-select if exactly one result (QR scan)
+      if (data.length === 1) {
+        cargarPrestamos(data[0].codigo, data[0].nombre || data[0].codigo);
+        return;
+      }
       div.innerHTML = data.map(t => `
         <div class="sugerencia-item" onclick="cargarPrestamos('${esc(t.codigo)}','${esc(t.nombre)}')">
           <div class="s-nombre">${t.nombre || '[Sin nombre]'}</div>

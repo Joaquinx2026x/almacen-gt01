@@ -158,8 +158,8 @@
   <div id="res-devolucion"></div>
 </div>
 
-<!-- jsQR desde CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<!-- ZXing: librería de Google, mucho más robusta en móvil que jsQR -->
+<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 
 <script>
 // ════════════════════════════════════════════════
@@ -170,12 +170,11 @@ const API = "https://script.google.com/macros/s/AKfycbwZbAFPrA8ZvAeLvt4mJE_L0pjL
 let trabajadorActual = null;
 let itemsSeleccionados = [];
 
-// Estado global del escáner (solo uno activo a la vez)
+// Estado global del escáner ZXing
 const qr = {
-  stream:   null,      // MediaStream activo
-  interval: null,      // setInterval handle
-  mode:     null,      // 'pre' | 'dev'
-  locked:   false      // evita doble disparo en el mismo frame
+  reader:   null,   // instancia ZXing
+  mode:     null,   // 'pre' | 'dev'
+  active:   false
 };
 
 // ════════════════════════════════════════════════
@@ -220,95 +219,48 @@ function flashGreen(mode) {
 }
 
 // ════════════════════════════════════════════════
-//  ESCÁNER QR  (reescrito con setInterval)
+//  ESCÁNER QR con ZXing (Google)
 // ════════════════════════════════════════════════
 function toggleQR(mode) {
-  // Si ya hay un escáner activo del mismo modo → cerrar
-  if (qr.mode === mode && qr.stream) {
-    stopQR();
-    return;
-  }
-  // Si hay otro activo → cerrarlo primero
-  if (qr.stream) stopQR();
+  if (qr.active && qr.mode === mode) { stopQR(); return; }
+  if (qr.active) stopQR();
 
   const wrap = document.getElementById('wrap-' + mode);
   const vid  = document.getElementById('vid-'  + mode);
   const btn  = document.getElementById('btn-qr-' + mode);
 
-  // Verificar soporte
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Tu navegador no soporta cámara. Usa Chrome actualizado.');
+  if (typeof ZXing === 'undefined') {
+    alert('Error cargando el escáner. Verifica tu conexión a internet.');
     return;
   }
 
   wrap.style.display = 'block';
-  btn.textContent = '⏹ Detener cámara';
+  btn.textContent    = '⏹ Detener cámara';
   qr.mode   = mode;
-  qr.locked = false;
+  qr.active = true;
 
-  // Pedir cámara trasera — resolución reducida para que jsQR procese más rápido
-  navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: { ideal: 'environment' },
-      width:  { ideal: 640 },
-      height: { ideal: 480 }
-    }
-  })
-  .then(stream => {
-    qr.stream     = stream;
-    vid.srcObject = stream;
+  // Crear lector ZXing optimizado para QR
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
-    // Arrancar el loop en cuanto el video empiece a reproducirse
-    vid.addEventListener('playing', () => {
-      setTimeout(() => startScanLoop(mode), 500);
-    }, { once: true });
+  qr.reader = new ZXing.BrowserQRCodeReader(hints);
 
-    vid.play().catch(() => {}); // forzar play (algunos móviles lo requieren)
-  })
-  .catch(err => {
-    wrap.style.display = 'none';
-    btn.textContent = '📷 Escanear QR';
-    qr.mode = null;
-    alert('Error al acceder a la cámara: ' + err.message +
-          '\nAsegúrate de dar permiso de cámara y usar HTTPS.');
-  });
-}
+  // ZXing maneja la cámara y el loop internamente
+  qr.reader.decodeFromVideoDevice(
+    undefined,   // undefined = cámara trasera automáticamente
+    vid,
+    (result, err) => {
+      if (!result) return;
+      if (!qr.active) return;
 
-// Loop de lectura cada 100 ms — más rápido y con canvas reducido a 400px
-function startScanLoop(mode) {
-  const vid = document.getElementById('vid-'  + mode);
-  const cvs = document.getElementById('cvs-'  + mode);
-  const ctx = cvs.getContext('2d', { willReadFrequently: true });
+      const valor = result.getText().trim();
+      if (!valor) return;
 
-  // Canvas fijo de 400x300 — suficiente para jsQR y mucho más liviano
-  cvs.width  = 400;
-  cvs.height = 300;
+      beep();
+      flashGreen(mode);
+      stopQR();
 
-  qr.interval = setInterval(() => {
-    if (qr.locked) return;
-    // El video debe estar reproduciendo y tener dimensiones reales
-    if (vid.paused || vid.ended || vid.videoWidth === 0) return;
-
-    // Dibujar frame escalado al canvas pequeño
-    ctx.drawImage(vid, 0, 0, 400, 300);
-
-    // Obtener pixels
-    const imageData = ctx.getImageData(0, 0, 400, 300);
-
-    // Intentar con todos los modos de inversión para mejor detección
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: 'attemptBoth'
-    });
-
-    if (code && code.data && code.data.trim() !== '') {
-      qr.locked = true;         // evitar doble disparo
-      beep();                   // pitido
-      flashGreen(mode);         // flash verde
-
-      const valor = code.data.trim();
-      stopQR();                 // cerrar cámara inmediatamente
-
-      // Rellenar campo y disparar búsqueda
       if (mode === 'dev') {
         document.getElementById('buscar-trabajador-dev').value = valor;
         buscarTrabajadorDev(valor);
@@ -317,30 +269,32 @@ function startScanLoop(mode) {
         buscarTrabajador(valor);
       }
     }
-  }, 100); // cada 100 ms — el doble de intentos por segundo
+  ).catch(err => {
+    wrap.style.display = 'none';
+    btn.textContent    = '📷 Escanear QR';
+    qr.active = false;
+    qr.mode   = null;
+    alert('No se pudo acceder a la cámara: ' + err.message);
+  });
 }
 
-// Detener todo
+// Detener ZXing y liberar cámara
 function stopQR() {
-  clearInterval(qr.interval);
-  qr.interval = null;
-
-  if (qr.stream) {
-    qr.stream.getTracks().forEach(t => t.stop());
-    qr.stream = null;
+  if (qr.reader) {
+    try { qr.reader.reset(); } catch(e) {}
+    qr.reader = null;
   }
+  qr.active = false;
 
   if (qr.mode) {
     const wrap = document.getElementById('wrap-' + qr.mode);
     const vid  = document.getElementById('vid-'  + qr.mode);
     const btn  = document.getElementById('btn-qr-' + qr.mode);
     if (wrap) wrap.style.display = 'none';
-    if (vid)  vid.srcObject = null;
+    if (vid)  { try { vid.srcObject = null; } catch(e) {} }
     if (btn)  btn.textContent = '📷 Escanear QR';
   }
-
-  qr.mode   = null;
-  qr.locked = false;
+  qr.mode = null;
 }
 
 // ════════════════════════════════════════════════

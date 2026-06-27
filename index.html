@@ -44,10 +44,50 @@
   .loading { text-align: center; padding: 20px; color: #666; font-size: 13px; }
   .msg-ok { background: #E2EFDA; color: #375623; padding: 10px; border-radius: 6px; text-align: center; font-weight: bold; margin-bottom: 10px; }
   .msg-err { background: #FCE4D6; color: #C00000; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 10px; }
-  #qr-container { display: none; margin-bottom: 10px; position: relative; }
-  #qr-video { width: 100%; border-radius: 8px; }
   .devolucion-item { background: white; border: 1px solid #ddd; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
   .devolucion-item label { font-size: 13px; font-weight: bold; display: block; margin-bottom: 6px; }
+
+  /* ── QR SCANNER STYLES ── */
+  .qr-wrapper { display: none; margin-bottom: 10px; }
+  .qr-box { position: relative; width: 100%; border-radius: 10px; overflow: hidden; background: #000; }
+  .qr-box video { width: 100%; display: block; border-radius: 10px; }
+  /* Visor: esquinas animadas para guiar el encuadre */
+  .qr-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .qr-finder {
+    width: 65%; aspect-ratio: 1;
+    position: relative;
+  }
+  .qr-finder::before, .qr-finder::after,
+  .qr-finder span::before, .qr-finder span::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: #F4B942;
+    border-style: solid;
+  }
+  .qr-finder::before  { top: 0;    left: 0;  border-width: 3px 0 0 3px; }
+  .qr-finder::after   { top: 0;    right: 0; border-width: 3px 3px 0 0; }
+  .qr-finder span::before { bottom: 0; left: 0;  border-width: 0 0 3px 3px; }
+  .qr-finder span::after  { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+  .qr-label {
+    position: absolute; bottom: 8px; left: 0; right: 0;
+    text-align: center; color: white; font-size: 12px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+  /* Flash verde al detectar */
+  .qr-flash {
+    position: absolute; inset: 0;
+    background: rgba(55, 86, 35, 0.45);
+    border-radius: 10px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.05s;
+  }
+  .qr-flash.show { opacity: 1; }
 </style>
 </head>
 <body>
@@ -62,14 +102,23 @@
   <div class="tab" onclick="showTab('devolucion')">📥 Devolución</div>
 </div>
 
+<!-- ══════════════ PANTALLA PRÉSTAMO ══════════════ -->
 <div id="screen-prestamo" class="screen active">
   <div class="card">
     <div class="card-title">👤 Identificar Trabajador</div>
-    <button class="btn btn-scan" onclick="toggleQR()">📷 Escanear QR</button>
-    <div id="qr-container">
-      <video id="qr-video" autoplay playsinline></video>
-      <canvas id="qr-canvas" style="display:none"></canvas>
+    <button class="btn btn-scan" id="btn-qr-pre" onclick="toggleQR('pre')">📷 Escanear QR</button>
+
+    <!-- Contenedor del escáner: préstamo -->
+    <div class="qr-wrapper" id="wrap-pre">
+      <div class="qr-box">
+        <video id="vid-pre" autoplay playsinline muted></video>
+        <canvas id="cvs-pre" style="display:none"></canvas>
+        <div class="qr-overlay"><div class="qr-finder"><span></span></div></div>
+        <div class="qr-label">Apunta al código QR del trabajador</div>
+        <div class="qr-flash" id="flash-pre"></div>
+      </div>
     </div>
+
     <input type="text" id="buscar-trabajador" placeholder="O escribe nombre o número (ej: 001)" oninput="buscarTrabajador(this.value)">
     <div class="sugerencias" id="sug-trabajador"></div>
     <div id="trabajador-sel" style="display:none"></div>
@@ -85,14 +134,23 @@
   <div id="res-prestamo"></div>
 </div>
 
+<!-- ══════════════ PANTALLA DEVOLUCIÓN ══════════════ -->
 <div id="screen-devolucion" class="screen">
   <div class="card">
     <div class="card-title">👤 Identificar Trabajador</div>
-    <button class="btn btn-scan" onclick="toggleQR('dev')">📷 Escanear QR</button>
-    <div id="qr-container-dev" style="display:none">
-      <video id="qr-video-dev" autoplay playsinline></video>
-      <canvas id="qr-canvas-dev" style="display:none"></canvas>
+    <button class="btn btn-scan" id="btn-qr-dev" onclick="toggleQR('dev')">📷 Escanear QR</button>
+
+    <!-- Contenedor del escáner: devolución -->
+    <div class="qr-wrapper" id="wrap-dev">
+      <div class="qr-box">
+        <video id="vid-dev" autoplay playsinline muted></video>
+        <canvas id="cvs-dev" style="display:none"></canvas>
+        <div class="qr-overlay"><div class="qr-finder"><span></span></div></div>
+        <div class="qr-label">Apunta al código QR del trabajador</div>
+        <div class="qr-flash" id="flash-dev"></div>
+      </div>
     </div>
+
     <input type="text" id="buscar-trabajador-dev" placeholder="O escribe nombre o número (ej: 001)" oninput="buscarTrabajadorDev(this.value)">
     <div class="sugerencias" id="sug-trabajador-dev"></div>
   </div>
@@ -100,22 +158,195 @@
   <div id="res-devolucion"></div>
 </div>
 
+<!-- jsQR desde CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+
 <script>
+// ════════════════════════════════════════════════
+//  CONFIGURACIÓN
+// ════════════════════════════════════════════════
 const API = "https://script.google.com/macros/s/AKfycbwZbAFPrA8ZvAeLvt4mJE_L0pjL_3SfrXE4JuvBaaKgzO98jL8gI7jh0Co9d13BhfkyVQ/exec";
+
 let trabajadorActual = null;
 let itemsSeleccionados = [];
-let qrStream = null;
-let qrScanning = false;
 
+// Estado global del escáner (solo uno activo a la vez)
+const qr = {
+  stream:   null,      // MediaStream activo
+  interval: null,      // setInterval handle
+  mode:     null,      // 'pre' | 'dev'
+  locked:   false      // evita doble disparo en el mismo frame
+};
+
+// ════════════════════════════════════════════════
+//  TABS
+// ════════════════════════════════════════════════
 function showTab(tab) {
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['prestamo','devolucion'][i]===tab));
+  document.querySelectorAll('.tab').forEach((t, i) =>
+    t.classList.toggle('active', ['prestamo','devolucion'][i] === tab));
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.getElementById('screen-'+tab).classList.add('active');
+  document.getElementById('screen-' + tab).classList.add('active');
+  // Si se cambia de tab, detener cámara activa
+  stopQR();
 }
 
-// ── API CALLS ─────────────────────────────────────────────────
-async function apiCall(action, params={}) {
+// ════════════════════════════════════════════════
+//  PITIDO — Web Audio API (sin dependencias)
+// ════════════════════════════════════════════════
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1046, ctx.currentTime);      // Do6
+    gain.gain.setValueAtTime(0.6, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.25);
+  } catch(e) { /* silencioso si el navegador bloquea */ }
+}
+
+// ════════════════════════════════════════════════
+//  FLASH VISUAL al detectar QR
+// ════════════════════════════════════════════════
+function flashGreen(mode) {
+  const el = document.getElementById('flash-' + mode);
+  if (!el) return;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 300);
+}
+
+// ════════════════════════════════════════════════
+//  ESCÁNER QR  (reescrito con setInterval)
+// ════════════════════════════════════════════════
+function toggleQR(mode) {
+  // Si ya hay un escáner activo del mismo modo → cerrar
+  if (qr.mode === mode && qr.stream) {
+    stopQR();
+    return;
+  }
+  // Si hay otro activo → cerrarlo primero
+  if (qr.stream) stopQR();
+
+  const wrap = document.getElementById('wrap-' + mode);
+  const vid  = document.getElementById('vid-'  + mode);
+  const btn  = document.getElementById('btn-qr-' + mode);
+
+  // Verificar soporte
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert('Tu navegador no soporta cámara. Usa Chrome actualizado.');
+    return;
+  }
+
+  wrap.style.display = 'block';
+  btn.textContent = '⏹ Detener cámara';
+  qr.mode   = mode;
+  qr.locked = false;
+
+  // Pedir cámara trasera
+  navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: 'environment' },
+      width:  { ideal: 1280 },
+      height: { ideal: 720 }
+    }
+  })
+  .then(stream => {
+    qr.stream  = stream;
+    vid.srcObject = stream;
+
+    // Esperar a que el video esté listo antes de empezar el loop
+    vid.onloadedmetadata = () => {
+      vid.play().then(() => {
+        // Pequeña espera extra para que el primer frame sea real
+        setTimeout(() => startScanLoop(mode), 300);
+      }).catch(err => {
+        alert('No se pudo iniciar el video: ' + err.message);
+        stopQR();
+      });
+    };
+  })
+  .catch(err => {
+    wrap.style.display = 'none';
+    btn.textContent = '📷 Escanear QR';
+    qr.mode = null;
+    alert('Error al acceder a la cámara: ' + err.message +
+          '\nAsegúrate de dar permiso de cámara y usar HTTPS.');
+  });
+}
+
+// Loop de lectura cada 200 ms con setInterval
+function startScanLoop(mode) {
+  const vid = document.getElementById('vid-'  + mode);
+  const cvs = document.getElementById('cvs-'  + mode);
+  const ctx = cvs.getContext('2d', { willReadFrequently: true });
+
+  qr.interval = setInterval(() => {
+    // Verificar que el video tenga datos reales
+    if (vid.readyState < 2 || vid.videoWidth === 0 || vid.videoHeight === 0) return;
+    if (qr.locked) return;
+
+    // Dibujar frame en canvas
+    cvs.width  = vid.videoWidth;
+    cvs.height = vid.videoHeight;
+    ctx.drawImage(vid, 0, 0, cvs.width, cvs.height);
+
+    // Obtener pixels y pasarlos a jsQR
+    const imageData = ctx.getImageData(0, 0, cvs.width, cvs.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert'
+    });
+
+    if (code && code.data) {
+      qr.locked = true;         // evitar doble disparo
+      beep();                   // pitido
+      flashGreen(mode);         // flash verde
+
+      const valor = code.data.trim();
+      stopQR();                 // cerrar cámara inmediatamente
+
+      // Rellenar campo y disparar búsqueda
+      if (mode === 'dev') {
+        document.getElementById('buscar-trabajador-dev').value = valor;
+        buscarTrabajadorDev(valor);
+      } else {
+        document.getElementById('buscar-trabajador').value = valor;
+        buscarTrabajador(valor);
+      }
+    }
+  }, 200); // cada 200 ms
+}
+
+// Detener todo
+function stopQR() {
+  clearInterval(qr.interval);
+  qr.interval = null;
+
+  if (qr.stream) {
+    qr.stream.getTracks().forEach(t => t.stop());
+    qr.stream = null;
+  }
+
+  if (qr.mode) {
+    const wrap = document.getElementById('wrap-' + qr.mode);
+    const vid  = document.getElementById('vid-'  + qr.mode);
+    const btn  = document.getElementById('btn-qr-' + qr.mode);
+    if (wrap) wrap.style.display = 'none';
+    if (vid)  vid.srcObject = null;
+    if (btn)  btn.textContent = '📷 Escanear QR';
+  }
+
+  qr.mode   = null;
+  qr.locked = false;
+}
+
+// ════════════════════════════════════════════════
+//  API CALLS
+// ════════════════════════════════════════════════
+async function apiCall(action, params = {}) {
   const url = API + '?action=' + action + '&' + new URLSearchParams(params);
   const res = await fetch(url);
   return res.json();
@@ -124,96 +355,41 @@ async function apiCall(action, params={}) {
 async function apiPost(action, data) {
   const res = await fetch(API, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({action, ...data})
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...data })
   });
   return res.json();
 }
 
-// ── QR SCANNER ────────────────────────────────────────────────
-function toggleQR(mode) {
-  const suffix = mode === 'dev' ? '-dev' : '';
-  const container = document.getElementById('qr-container' + (mode?'-'+mode:''));
-  const video = document.getElementById('qr-video' + suffix);
-  const canvas = document.getElementById('qr-canvas' + suffix);
-
-  if (qrScanning) {
-    stopQR(video, container);
-    return;
-  }
-
-  container.style.display = 'block';
-  qrScanning = true;
-
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(stream => {
-      qrStream = stream;
-      video.srcObject = stream;
-      video.play();
-      scanQR(video, canvas, mode);
-    })
-    .catch(err => {
-      container.style.display = 'none';
-      qrScanning = false;
-      alert('Error cámara: ' + err.message);
-    });
-}
-
-function scanQR(video, canvas, mode) {
-  if (!qrScanning) return;
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(img.data, img.width, img.height);
-    if (code) {
-      stopQR(video, document.getElementById('qr-container' + (mode?'-'+mode:'')));
-      if (mode === 'dev') {
-        document.getElementById('buscar-trabajador-dev').value = code.data;
-        buscarTrabajadorDev(code.data);
-      } else {
-        document.getElementById('buscar-trabajador').value = code.data;
-        buscarTrabajador(code.data);
-      }
-      return;
-    }
-  }
-  requestAnimationFrame(() => scanQR(video, canvas, mode));
-}
-
-function stopQR(video, container) {
-  qrScanning = false;
-  if (qrStream) { qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
-  if (container) container.style.display = 'none';
-}
-
-// ── BUSCAR TRABAJADOR ─────────────────────────────────────────
+// ════════════════════════════════════════════════
+//  BUSCAR TRABAJADOR (Préstamo)
+// ════════════════════════════════════════════════
 let timerT;
 function buscarTrabajador(val) {
   clearTimeout(timerT);
   const div = document.getElementById('sug-trabajador');
-  if (!val || val.length < 1) { div.style.display='none'; return; }
+  if (!val || val.length < 1) { div.style.display = 'none'; return; }
   timerT = setTimeout(async () => {
-    const data = await apiCall('buscarTrabajador', {q: val});
-    if (!data.length) { div.style.display='none'; return; }
-    div.innerHTML = data.map(t => `
-      <div class="sugerencia-item" onclick="selTrabajador('${t.codigo}','${t.nombre}','${t.cargo}')">
-        <div class="s-nombre">${t.nombre||'[Sin nombre]'}</div>
-        <div class="s-cod">${t.codigo} · ${t.cargo}</div>
-      </div>`).join('');
-    div.style.display = 'block';
+    try {
+      const data = await apiCall('buscarTrabajador', { q: val });
+      if (!data.length) { div.style.display = 'none'; return; }
+      div.innerHTML = data.map(t => `
+        <div class="sugerencia-item" onclick="selTrabajador('${t.codigo}','${esc(t.nombre)}','${esc(t.cargo)}')">
+          <div class="s-nombre">${t.nombre || '[Sin nombre]'}</div>
+          <div class="s-cod">${t.codigo} · ${t.cargo}</div>
+        </div>`).join('');
+      div.style.display = 'block';
+    } catch(e) { div.style.display = 'none'; }
   }, 400);
 }
 
 function selTrabajador(codigo, nombre, cargo) {
-  trabajadorActual = {codigo, nombre, cargo};
+  trabajadorActual = { codigo, nombre, cargo };
   document.getElementById('sug-trabajador').style.display = 'none';
   document.getElementById('buscar-trabajador').value = nombre;
   document.getElementById('trabajador-sel').innerHTML = `
     <div class="trabajador-card">
-      <div class="nombre">👷 ${nombre||'[Sin nombre]'}</div>
+      <div class="nombre">👷 ${nombre || '[Sin nombre]'}</div>
       <div class="codigo">${codigo} · ${cargo}</div>
     </div>`;
   document.getElementById('trabajador-sel').style.display = 'block';
@@ -222,33 +398,37 @@ function selTrabajador(codigo, nombre, cargo) {
   renderItems();
 }
 
-// ── BUSCAR ITEMS ──────────────────────────────────────────────
+// ════════════════════════════════════════════════
+//  BUSCAR ITEMS
+// ════════════════════════════════════════════════
 let timerI;
 function buscarItem(val) {
   clearTimeout(timerI);
   const div = document.getElementById('sug-item');
-  if (!val || val.length < 1) { div.style.display='none'; return; }
+  if (!val || val.length < 1) { div.style.display = 'none'; return; }
   timerI = setTimeout(async () => {
-    const data = await apiCall('buscarItem', {q: val});
-    if (!data.length) { div.style.display='none'; return; }
-    div.innerHTML = data.map(i => `
-      <div class="sugerencia-item" onclick="addItem('${i.codigo}','${i.descripcion}','${i.tipo}')">
-        <div class="s-nombre">${i.descripcion}</div>
-        <div class="s-cod"><span class="badge badge-${i.tipo==='Herramienta'?'herr':'insu'}">${i.tipo}</span> ${i.codigo}</div>
-      </div>`).join('');
-    div.style.display = 'block';
+    try {
+      const data = await apiCall('buscarItem', { q: val });
+      if (!data.length) { div.style.display = 'none'; return; }
+      div.innerHTML = data.map(i => `
+        <div class="sugerencia-item" onclick="addItem('${i.codigo}','${esc(i.descripcion)}','${i.tipo}')">
+          <div class="s-nombre">${i.descripcion}</div>
+          <div class="s-cod"><span class="badge badge-${i.tipo==='Herramienta'?'herr':'insu'}">${i.tipo}</span> ${i.codigo}</div>
+        </div>`).join('');
+      div.style.display = 'block';
+    } catch(e) { div.style.display = 'none'; }
   }, 400);
 }
 
 function addItem(codigo, descripcion, tipo) {
   document.getElementById('sug-item').style.display = 'none';
   document.getElementById('buscar-item').value = '';
-  itemsSeleccionados.push({codigo, descripcion, tipo, obs:''});
+  itemsSeleccionados.push({ codigo, descripcion, tipo, obs: '' });
   renderItems();
 }
 
 function removeItem(idx) {
-  itemsSeleccionados.splice(idx,1);
+  itemsSeleccionados.splice(idx, 1);
   renderItems();
 }
 
@@ -259,7 +439,7 @@ function renderItems() {
     document.getElementById('btn-guardar').style.display = 'none';
     return;
   }
-  div.innerHTML = itemsSeleccionados.map((it,i) => `
+  div.innerHTML = itemsSeleccionados.map((it, i) => `
     <div class="item-row">
       <div class="item-info">
         <div class="item-cod"><span class="badge badge-${it.tipo==='Herramienta'?'herr':'insu'}">${it.tipo}</span> ${it.codigo}</div>
@@ -271,7 +451,9 @@ function renderItems() {
   document.getElementById('btn-guardar').style.display = 'block';
 }
 
-// ── GUARDAR PRÉSTAMO ──────────────────────────────────────────
+// ════════════════════════════════════════════════
+//  GUARDAR PRÉSTAMO
+// ════════════════════════════════════════════════
 async function guardarPrestamo() {
   if (!trabajadorActual || !itemsSeleccionados.length) return;
   const btn = document.getElementById('btn-guardar');
@@ -283,34 +465,40 @@ async function guardarPrestamo() {
       nombreTrabajador: trabajadorActual.nombre,
       items: itemsSeleccionados
     });
-    document.getElementById('res-prestamo').innerHTML = `<div class="msg-ok">✅ Préstamo ${res.idPrestamo} registrado</div>`;
+    document.getElementById('res-prestamo').innerHTML =
+      `<div class="msg-ok">✅ Préstamo ${res.idPrestamo} registrado</div>`;
     trabajadorActual = null;
     itemsSeleccionados = [];
     document.getElementById('buscar-trabajador').value = '';
     document.getElementById('trabajador-sel').style.display = 'none';
     document.getElementById('card-items').style.display = 'none';
   } catch(e) {
-    document.getElementById('res-prestamo').innerHTML = `<div class="msg-err">❌ Error: ${e.message}</div>`;
+    document.getElementById('res-prestamo').innerHTML =
+      `<div class="msg-err">❌ Error: ${e.message}</div>`;
   }
   btn.textContent = '✅ Guardar Préstamo';
   btn.disabled = false;
 }
 
-// ── DEVOLUCIÓN ────────────────────────────────────────────────
+// ════════════════════════════════════════════════
+//  DEVOLUCIÓN
+// ════════════════════════════════════════════════
 let timerTD;
 function buscarTrabajadorDev(val) {
   clearTimeout(timerTD);
   const div = document.getElementById('sug-trabajador-dev');
-  if (!val || val.length < 1) { div.style.display='none'; return; }
+  if (!val || val.length < 1) { div.style.display = 'none'; return; }
   timerTD = setTimeout(async () => {
-    const data = await apiCall('buscarTrabajador', {q: val});
-    if (!data.length) { div.style.display='none'; return; }
-    div.innerHTML = data.map(t => `
-      <div class="sugerencia-item" onclick="cargarPrestamos('${t.codigo}','${t.nombre}')">
-        <div class="s-nombre">${t.nombre||'[Sin nombre]'}</div>
-        <div class="s-cod">${t.codigo}</div>
-      </div>`).join('');
-    div.style.display = 'block';
+    try {
+      const data = await apiCall('buscarTrabajador', { q: val });
+      if (!data.length) { div.style.display = 'none'; return; }
+      div.innerHTML = data.map(t => `
+        <div class="sugerencia-item" onclick="cargarPrestamos('${t.codigo}','${esc(t.nombre)}')">
+          <div class="s-nombre">${t.nombre || '[Sin nombre]'}</div>
+          <div class="s-cod">${t.codigo}</div>
+        </div>`).join('');
+      div.style.display = 'block';
+    } catch(e) { div.style.display = 'none'; }
   }, 400);
 }
 
@@ -318,45 +506,60 @@ async function cargarPrestamos(codigo, nombre) {
   document.getElementById('sug-trabajador-dev').style.display = 'none';
   document.getElementById('buscar-trabajador-dev').value = nombre;
   document.getElementById('prestamos-activos').innerHTML = '<div class="loading">🔄 Cargando...</div>';
-  const data = await apiCall('prestamosActivos', {codigo});
-  if (!data.length) {
-    document.getElementById('prestamos-activos').innerHTML = '<div class="card"><p style="text-align:center;color:#666;padding:10px">Sin préstamos activos</p></div>';
-    return;
+  try {
+    const data = await apiCall('prestamosActivos', { codigo });
+    if (!data.length) {
+      document.getElementById('prestamos-activos').innerHTML =
+        '<div class="card"><p style="text-align:center;color:#666;padding:10px">Sin préstamos activos</p></div>';
+      return;
+    }
+    document.getElementById('prestamos-activos').innerHTML = data.map(p => `
+      <div class="prestamo-activo">
+        <div style="font-size:12px;color:#666">${p.idPrestamo} · ${p.fecha}</div>
+        <div style="font-size:15px;font-weight:bold;color:#1F3864;margin-bottom:8px">👷 ${nombre}</div>
+        ${p.items.map(it => `
+          <div class="devolucion-item">
+            <label>${it.descripcion} <span class="badge badge-herr">${it.codigo}</span></label>
+            <select id="est-${it.idDetalle}">
+              <option value="Bueno">✅ Bueno</option>
+              <option value="Con daño">⚠️ Con daño</option>
+              <option value="Perdida">❌ Perdida</option>
+            </select>
+            <input type="text" id="obs-${it.idDetalle}" placeholder="Observación (opcional)">
+          </div>`).join('')}
+        <button class="btn btn-success" onclick="confirmarDev('${p.idPrestamo}', ${JSON.stringify(p.items).replace(/"/g,"'")})">
+          📥 Confirmar Devolución
+        </button>
+      </div>`).join('');
+  } catch(e) {
+    document.getElementById('prestamos-activos').innerHTML =
+      `<div class="msg-err">❌ Error cargando préstamos: ${e.message}</div>`;
   }
-  document.getElementById('prestamos-activos').innerHTML = data.map(p => `
-    <div class="prestamo-activo">
-      <div style="font-size:12px;color:#666">${p.idPrestamo} · ${p.fecha}</div>
-      <div style="font-size:15px;font-weight:bold;color:#1F3864;margin-bottom:8px">👷 ${nombre}</div>
-      ${p.items.map(it => `
-        <div class="devolucion-item">
-          <label>${it.descripcion} <span class="badge badge-herr">${it.codigo}</span></label>
-          <select id="est-${it.idDetalle}">
-            <option value="Bueno">✅ Bueno</option>
-            <option value="Con daño">⚠️ Con daño</option>
-            <option value="Perdida">❌ Perdida</option>
-          </select>
-          <input type="text" id="obs-${it.idDetalle}" placeholder="Observación (opcional)">
-        </div>`).join('')}
-      <button class="btn btn-success" onclick="confirmarDev('${p.idPrestamo}', ${JSON.stringify(p.items).replace(/"/g,"'")})">
-        📥 Confirmar Devolución
-      </button>
-    </div>`).join('');
 }
 
 async function confirmarDev(idPrestamo, items) {
   const devueltos = items.map(it => ({
     idDetalle: it.idDetalle,
-    estado: document.getElementById('est-'+it.idDetalle)?.value || 'Bueno',
-    obs: document.getElementById('obs-'+it.idDetalle)?.value || ''
+    estado: document.getElementById('est-' + it.idDetalle)?.value || 'Bueno',
+    obs:    document.getElementById('obs-' + it.idDetalle)?.value || ''
   }));
   try {
-    await apiPost('cerrarPrestamo', {idPrestamo, items: devueltos});
-    document.getElementById('res-devolucion').innerHTML = '<div class="msg-ok">✅ Devolución registrada</div>';
+    await apiPost('cerrarPrestamo', { idPrestamo, items: devueltos });
+    document.getElementById('res-devolucion').innerHTML =
+      '<div class="msg-ok">✅ Devolución registrada</div>';
     document.getElementById('prestamos-activos').innerHTML = '';
     document.getElementById('buscar-trabajador-dev').value = '';
   } catch(e) {
-    document.getElementById('res-devolucion').innerHTML = `<div class="msg-err">❌ Error: ${e.message}</div>`;
+    document.getElementById('res-devolucion').innerHTML =
+      `<div class="msg-err">❌ Error: ${e.message}</div>`;
   }
+}
+
+// ════════════════════════════════════════════════
+//  UTILIDAD — escapar comillas simples en atributos onclick
+// ════════════════════════════════════════════════
+function esc(str) {
+  return (str || '').replace(/'/g, "\\'");
 }
 </script>
 </body>

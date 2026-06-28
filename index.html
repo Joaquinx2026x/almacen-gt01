@@ -401,7 +401,11 @@ function selTwPre(codigo, nombre, cargo) {
   document.getElementById('tw-card-pre').style.display = 'block';
   document.getElementById('card-items').style.display = 'block';
   items = [];
-  setTipo('Herramienta');
+  tipoActual = 'Herramienta';
+  document.getElementById('tt-herr').className = 'tipo-tab t-herr';
+  document.getElementById('tt-insu').className = 'tipo-tab';
+  document.getElementById('tt-mate').className = 'tipo-tab';
+  document.getElementById('inp-item').placeholder = 'Buscar herramienta...';
   renderItems();
 }
 
@@ -417,6 +421,7 @@ function selTwDev(codigo, nombre) {
 // ════════════════════════════════════════════════
 function setTipo(tipo) {
   tipoActual = tipo;
+  // Solo cambia el tab activo y el placeholder — NO toca la lista de ítems
   document.getElementById('tt-herr').className = 'tipo-tab' + (tipo==='Herramienta' ? ' t-herr' : '');
   document.getElementById('tt-insu').className = 'tipo-tab' + (tipo==='Insumo'      ? ' t-insu' : '');
   document.getElementById('tt-mate').className = 'tipo-tab' + (tipo==='Material'    ? ' t-mate' : '');
@@ -424,6 +429,8 @@ function setTipo(tipo) {
   document.getElementById('sug-item').style.display = 'none';
   const ph = { Herramienta:'Buscar herramienta...', Insumo:'Buscar insumo (cinta, precaución...)', Material:'Buscar material/pernería...' };
   document.getElementById('inp-item').placeholder = ph[tipo];
+  // Volver a renderizar para mostrar resumen actualizado
+  renderItems();
 }
 
 // ════════════════════════════════════════════════

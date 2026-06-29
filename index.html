@@ -56,8 +56,8 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 .hist-filtros input{flex:1;min-width:120px;margin-bottom:0}
 .hist-filtros select{width:130px;margin-bottom:0}
 .hist-filtros .btn{width:auto;padding:9px 14px;margin-bottom:0;font-size:12px}
-.fr-row{display:flex;gap:5px;margin-bottom:8px}
-.fr-btn{flex:1;padding:7px 4px;border:2px solid #ddd;border-radius:7px;background:#fff;font-size:11px;font-weight:bold;cursor:pointer;text-align:center;color:#888}
+.fr-row{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap}
+.fr-btn{flex:1;padding:7px 4px;border:2px solid #ddd;border-radius:7px;background:#fff;font-size:11px;font-weight:bold;cursor:pointer;text-align:center;color:#888;min-width:70px}
 .fr-btn.on{border-color:#F4B942;background:#FFF9E6;color:#856404}
 .hist-row{background:#fff;border-radius:7px;padding:10px;margin-bottom:7px;border-left:4px solid #ddd;box-shadow:0 1px 3px rgba(0,0,0,.07)}
 .hist-row.abierto{border-left-color:#F4B942}
@@ -161,77 +161,29 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 // ══════════════════════════════════════════════
 //  CONFIG
 // ══════════════════════════════════════════════
-var API = "https://script.google.com/macros/s/AKfycbwZbAFPrA8ZvAeLvt4mJE_L0pjL_3SfrXE4JuvBaaKgzO98jL8gI7jh0Co9d13BhfkyVQ/exec";
+// Google Sheets API — lectura pública sin login
+var SHEET_ID  = "1SWv_qZLoAA2Du8_G1RzqoraemFiTcioDNg_BT0yWI3U";
+var API_KEY   = "AIzaSyAM5ZDWXhcE_lmdwl6DY0xbnrbvQRjtzWE";
+var SHEETS_URL = "https://sheets.googleapis.com/v4/spreadsheets/" + SHEET_ID + "/values/";
 
-var TWK    = null;
-var ITEMS  = [];
-var TIPO   = "Herramienta";
-var qrRdr  = null;
-var qrMode = -1;
+// Apps Script — escritura (guardar préstamos, devoluciones)
+// Deploy: Execute as Me + Anyone (anónimo)
+var GAS_URL = "https://script.google.com/macros/s/AKfycbxOsm7VAKd75-5XzRJHe50fBmoeLw02Y0A_-mVxBM8kUtu8yWiI3sJAk9veqiyCBw64/exec";
+
+// ── Estado global ──
+var TWK   = null;
+var ITEMS = [];
+var TIPO  = "Herramienta";
+var qrRdr = null;
+var qrMode= -1;
 
 // ══════════════════════════════════════════════
 //  TABS
 // ══════════════════════════════════════════════
 function goTab(n) {
-  document.querySelectorAll(".tab").forEach(function(t,i){ t.classList.toggle("on", i===n); });
-  document.querySelectorAll(".scr").forEach(function(s,i){ s.classList.toggle("on", i===n); });
+  document.querySelectorAll(".tab").forEach(function(t,i){ t.classList.toggle("on",i===n); });
+  document.querySelectorAll(".scr").forEach(function(s,i){ s.classList.toggle("on",i===n); });
   stopQR();
-}
-
-// ══════════════════════════════════════════════
-//  JSONP — sin CORS
-// ══════════════════════════════════════════════
-// ── API via JSONP — funciona sin CORS en móvil e incógnito ──
-// ANYONE_ANONYMOUS en GS + JSONP = sin login, sin bloqueos
-function apiCall(url) {
-  return new Promise(function(resolve, reject) {
-    var id = "cb" + Date.now() + Math.floor(Math.random() * 99999);
-    var timeout = setTimeout(function() {
-      cleanup();
-      reject(new Error("Sin respuesta del servidor — intenta de nuevo"));
-    }, 20000);
-    function cleanup() {
-      clearTimeout(timeout);
-      delete window[id];
-      var el = document.getElementById(id);
-      if (el && el.parentNode) el.parentNode.removeChild(el);
-    }
-    window[id] = function(data) {
-      cleanup();
-      if (data && data.error) reject(new Error(data.error));
-      else resolve(data);
-    };
-    var script = document.createElement("script");
-    script.id  = id;
-    script.src = url + (url.indexOf("?") >= 0 ? "&" : "?") + "callback=" + id;
-    script.onerror = function() {
-      cleanup();
-      reject(new Error("Error de conexión — verifica tu internet"));
-    };
-    document.body.appendChild(script);
-  });
-}
-
-function apiGet(action, params) {
-  var url = API + "?action=" + action;
-  if (params) {
-    Object.keys(params).forEach(function(k) {
-      if (params[k] !== undefined && params[k] !== null && params[k] !== "") {
-        url += "&" + k + "=" + encodeURIComponent(params[k]);
-      }
-    });
-  }
-  return apiCall(url);
-}
-
-function apiPost(action, data) {
-  data.action = action;
-  var payload = JSON.stringify(data, function(k, v) {
-    if (v === null || v === undefined) return undefined;
-    return v;
-  });
-  var url = API + "?action=" + action + "&payload=" + encodeURIComponent(payload);
-  return apiCall(url);
 }
 
 // ══════════════════════════════════════════════
@@ -241,206 +193,275 @@ function beep() {
   try {
     var a=new(window.AudioContext||window.webkitAudioContext)();
     var o=a.createOscillator(),g=a.createGain();
-    o.connect(g); g.connect(a.destination);
-    o.frequency.value=1200; g.gain.value=0.3;
-    o.start(); setTimeout(function(){o.stop();},130);
+    o.connect(g);g.connect(a.destination);
+    o.frequency.value=1200;g.gain.value=0.3;
+    o.start();setTimeout(function(){o.stop();},130);
   } catch(e){}
 }
 
 // ══════════════════════════════════════════════
-//  QR SCANNER — ZXing
+//  QR SCANNER
 // ══════════════════════════════════════════════
 function toggleQR(mode) {
-  if (qrMode === mode) { stopQR(); return; }
-  if (qrMode !== -1)   stopQR();
-  var wrap = document.getElementById("qw" + mode);
-  var vid  = document.getElementById("qv" + mode);
-  var btn  = document.getElementById("btnQR" + mode);
-  wrap.style.display = "block";
-  btn.textContent    = "⏹ Cerrar cámara";
-  qrMode = mode;
-  var hints = new Map();
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-  qrRdr = new ZXing.BrowserQRCodeReader(hints);
-  qrRdr.decodeFromVideoDevice(undefined, vid, function(result) {
-    if (!result) return;
-    var val = result.getText().trim();
-    if (!val) return;
+  if (qrMode===mode){stopQR();return;}
+  if (qrMode!==-1) stopQR();
+  var wrap=document.getElementById("qw"+mode);
+  var vid =document.getElementById("qv"+mode);
+  var btn =document.getElementById("btnQR"+mode);
+  wrap.style.display="block";
+  btn.textContent="⏹ Cerrar cámara";
+  qrMode=mode;
+  var hints=new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.QR_CODE]);
+  hints.set(ZXing.DecodeHintType.TRY_HARDER,true);
+  qrRdr=new ZXing.BrowserQRCodeReader(hints);
+  qrRdr.decodeFromVideoDevice(undefined,vid,function(result){
+    if(!result) return;
+    var val=result.getText().trim();
+    if(!val) return;
     beep();
-    var fl = document.getElementById("qf" + mode);
-    if (fl) { fl.classList.add("show"); setTimeout(function(){ fl.classList.remove("show"); }, 300); }
-    var modeGuard = mode; // guardar antes de stopQR
+    var fl=document.getElementById("qf"+mode);
+    if(fl){fl.classList.add("show");setTimeout(function(){fl.classList.remove("show");},300);}
+    var mg=mode;
     stopQR();
-    // ✅ FIX: llamar buscarTWDirecto sin timer — tenemos el valor exacto del QR
-    if (modeGuard === 1) {
-      document.getElementById("btd").value = val;
-      buscarTWDirecto(val, 1);
-    } else {
-      document.getElementById("bt").value = val;
-      buscarTWDirecto(val, 0);
-    }
+    if(mg===1){document.getElementById("btd").value=val;buscaTWDirecto(val,1);}
+    else{document.getElementById("bt").value=val;buscaTWDirecto(val,0);}
   });
 }
 
-function stopQR() {
-  if (qrRdr) { try { qrRdr.reset(); } catch(e){} qrRdr = null; }
-  if (qrMode !== -1) {
-    var wrap = document.getElementById("qw" + qrMode);
-    var vid  = document.getElementById("qv" + qrMode);
-    var btn  = document.getElementById("btnQR" + qrMode);
-    if (wrap) wrap.style.display = "none";
-    if (vid)  { try { vid.srcObject = null; } catch(e){} }
-    if (btn)  btn.textContent = "📷 Escanear QR del trabajador";
+function stopQR(){
+  if(qrRdr){try{qrRdr.reset();}catch(e){}qrRdr=null;}
+  if(qrMode!==-1){
+    var w=document.getElementById("qw"+qrMode);
+    var v=document.getElementById("qv"+qrMode);
+    var b=document.getElementById("btnQR"+qrMode);
+    if(w)w.style.display="none";
+    if(v){try{v.srcObject=null;}catch(e){}}
+    if(b)b.textContent="📷 Escanear QR del trabajador";
   }
-  qrMode = -1;
+  qrMode=-1;
 }
 
 // ══════════════════════════════════════════════
-//  BUSCAR TRABAJADOR
-//  buscarTWDirecto: sin timer, para uso desde QR
-//  buscaTW: con timer 380ms, para uso desde teclado
+//  API — Google Sheets (lectura pública)
 // ══════════════════════════════════════════════
-function buscarTWDirecto(val, mode) {
-  apiGet("buscarTrabajador", {q: val}).then(function(data) {
-    if (!data.length) {
-      var sugId = mode === 0 ? "st" : "std";
-      document.getElementById(sugId).style.display = "none";
+function sheetsGet(range) {
+  var url = SHEETS_URL + encodeURIComponent(range) + "?key=" + API_KEY;
+  return fetch(url).then(function(r){ return r.json(); });
+}
+
+// ══════════════════════════════════════════════
+//  API — Apps Script (escritura via JSONP)
+// ══════════════════════════════════════════════
+function gasCall(url) {
+  return new Promise(function(resolve, reject) {
+    var id = "cb" + Date.now() + Math.floor(Math.random()*99999);
+    var timer = setTimeout(function(){
+      cleanup();
+      reject(new Error("Sin respuesta — intenta de nuevo"));
+    }, 20000);
+    function cleanup(){
+      clearTimeout(timer);
+      delete window[id];
+      var el=document.getElementById(id);
+      if(el&&el.parentNode) el.parentNode.removeChild(el);
+    }
+    window[id]=function(data){
+      cleanup();
+      if(data&&data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+    var s=document.createElement("script");
+    s.id=id;
+    s.src=url+"&callback="+id;
+    s.onerror=function(){cleanup();reject(new Error("Error de conexión"));};
+    document.body.appendChild(s);
+  });
+}
+
+function gasPost(action, data) {
+  data.action=action;
+  var payload=JSON.stringify(data,function(k,v){
+    if(v===null||v===undefined) return undefined;
+    return v;
+  });
+  return gasCall(GAS_URL+"?action="+action+"&payload="+encodeURIComponent(payload));
+}
+
+// ══════════════════════════════════════════════
+//  BUSCAR TRABAJADOR — usa Sheets API directamente
+// ══════════════════════════════════════════════
+function buscaTWDirecto(val, mode) {
+  sheetsGet("Personal_GT01!A2:C").then(function(resp){
+    var rows = resp.values || [];
+    var q = val.toString().trim().toLowerCase();
+    var qNum = q.replace(/^0+/,"").replace("gt01/recper-","");
+    var res = [];
+    for(var i=0;i<rows.length&&res.length<6;i++){
+      var cod = (rows[i][0]||"").toString().trim();
+      var nom = (rows[i][1]||"").toString().trim();
+      var car = (rows[i][2]||"").toString().trim();
+      if(!cod) continue;
+      var codNum = cod.toLowerCase().replace("gt01/recper-","").replace(/^0+/,"");
+      if(cod.toLowerCase().indexOf(q)>=0 || nom.toLowerCase().indexOf(q)>=0 || codNum===qNum){
+        res.push({codigo:cod, nombre:nom||cod, cargo:car});
+      }
+    }
+    if(!res.length) return;
+    if(res.length===1){
+      mode===0?selTWPre(res[0]):selTWDev(res[0]);
       return;
     }
-    if (data.length === 1) {
-      mode === 0 ? selTWPre(data[0]) : selTWDev(data[0]);
-      return;
-    }
-    mostrarSugTW(data, mode);
+    mostrarSugTW(res, mode);
   }).catch(function(){});
 }
 
 var tTW;
 function buscaTW(v, mode) {
   clearTimeout(tTW);
-  var sugId = mode === 0 ? "st" : "std";
-  var d = document.getElementById(sugId);
-  if (!v || v.length < 1) { d.style.display = "none"; return; }
-  tTW = setTimeout(function() {
-    apiGet("buscarTrabajador", {q: v}).then(function(data) {
-      if (!data.length) { d.style.display = "none"; return; }
-      if (data.length === 1) {
-        mode === 0 ? selTWPre(data[0]) : selTWDev(data[0]);
-        return;
-      }
-      mostrarSugTW(data, mode);
-    }).catch(function(){});
-  }, 380);
+  var d=document.getElementById(mode===0?"st":"std");
+  if(!v||v.length<1){d.style.display="none";return;}
+  tTW=setTimeout(function(){ buscaTWDirecto(v, mode); }, 380);
 }
 
 function mostrarSugTW(data, mode) {
-  var sugId = mode === 0 ? "st" : "std";
-  var d = document.getElementById(sugId);
-  d.innerHTML = data.map(function(t) {
-    var fn = mode === 0
-      ? "selTWPre({codigo:'" + esc(t.codigo) + "',nombre:'" + esc(t.nombre) + "',cargo:'" + esc(t.cargo) + "'})"
-      : "selTWDev({codigo:'" + esc(t.codigo) + "',nombre:'" + esc(t.nombre) + "',cargo:'" + esc(t.cargo) + "'})";
-    return "<div class='sug-item' onclick=\"" + fn + "\">" +
-      "<div class='sug-nom'>" + (t.nombre || t.codigo) + "</div>" +
-      "<div class='sug-cod'>" + t.codigo + " · " + (t.cargo || "—") + "</div></div>";
+  var d=document.getElementById(mode===0?"st":"std");
+  d.innerHTML=data.map(function(t){
+    var fn=mode===0
+      ?"selTWPre({codigo:'"+esc(t.codigo)+"',nombre:'"+esc(t.nombre)+"',cargo:'"+esc(t.cargo)+"'})"
+      :"selTWDev({codigo:'"+esc(t.codigo)+"',nombre:'"+esc(t.nombre)+"',cargo:'"+esc(t.cargo)+"'})";
+    return "<div class='sug-item' onclick=\""+fn+"\"><div class='sug-nom'>"+(t.nombre||t.codigo)+"</div><div class='sug-cod'>"+t.codigo+" · "+(t.cargo||"—")+"</div></div>";
   }).join("");
-  d.style.display = "block";
+  d.style.display="block";
 }
 
-function selTWPre(t) {
-  TWK = t;
-  document.getElementById("st").style.display = "none";
-  document.getElementById("bt").value = t.nombre || t.codigo;
-  document.getElementById("tw").innerHTML =
-    "<div class='tw-card'>" +
-    "<div style='flex:1'><div class='tw-nom'>👷 " + (t.nombre || t.codigo) + "</div>" +
-    "<div class='tw-cod'>" + t.codigo + " · " + (t.cargo || "—") + "</div></div>" +
-    "<button class='b-warn b-sm' onclick='resetTW()'>✕ Cambiar</button>" +
-    "</div>";
-  document.getElementById("tw").style.display = "block";
-  document.getElementById("ci").style.display = "block";
+function selTWPre(t){
+  TWK=t;
+  document.getElementById("st").style.display="none";
+  document.getElementById("bt").value=t.nombre||t.codigo;
+  document.getElementById("tw").innerHTML=
+    "<div class='tw-card'><div style='flex:1'><div class='tw-nom'>👷 "+(t.nombre||t.codigo)+"</div>"+
+    "<div class='tw-cod'>"+t.codigo+" · "+(t.cargo||"—")+"</div></div>"+
+    "<button class='b-warn b-sm' onclick='resetTW()'>✕ Cambiar</button></div>";
+  document.getElementById("tw").style.display="block";
+  document.getElementById("ci").style.display="block";
 }
 
-function resetTW() {
-  if (ITEMS.length > 0 && !confirm("¿Cambiar trabajador? Se perderán los ítems agregados.")) return;
-  TWK = null; ITEMS = [];
-  document.getElementById("bt").value = "";
-  document.getElementById("tw").style.display = "none";
-  document.getElementById("ci").style.display = "none";
-  document.getElementById("rp").innerHTML = "";
+function resetTW(){
+  if(ITEMS.length>0&&!confirm("¿Cambiar trabajador? Se perderán los ítems.")) return;
+  TWK=null;ITEMS=[];
+  document.getElementById("bt").value="";
+  document.getElementById("tw").style.display="none";
+  document.getElementById("ci").style.display="none";
+  document.getElementById("rp").innerHTML="";
   renderItems();
 }
 
-function selTWDev(t) {
-  document.getElementById("std").style.display = "none";
-  document.getElementById("btd").value = t.nombre || t.codigo;
-  cargarPA(t.codigo, t.nombre || t.codigo);
+function selTWDev(t){
+  document.getElementById("std").style.display="none";
+  document.getElementById("btd").value=t.nombre||t.codigo;
+  cargarPA(t.codigo,t.nombre||t.codigo);
 }
 
 // ══════════════════════════════════════════════
-//  TIPO DE ÍTEM — no resetea la lista
+//  TIPO — no resetea la lista
 // ══════════════════════════════════════════════
-function setTipo(tipo) {
-  TIPO = tipo;
-  document.getElementById("tbh").className = "tipo-btn" + (tipo==="Herramienta" ? " on-h" : "");
-  document.getElementById("tbi").className = "tipo-btn" + (tipo==="Insumo"      ? " on-i" : "");
-  document.getElementById("tbm").className = "tipo-btn" + (tipo==="Material"    ? " on-m" : "");
-  document.getElementById("bi").value = "";
-  document.getElementById("si").style.display = "none";
-  var ph = {Herramienta:"Buscar herramienta...", Insumo:"Buscar insumo (cinta, precaución...)", Material:"Buscar material o pernería..."};
-  document.getElementById("bi").placeholder = ph[tipo];
+function setTipo(tipo){
+  TIPO=tipo;
+  document.getElementById("tbh").className="tipo-btn"+(tipo==="Herramienta"?" on-h":"");
+  document.getElementById("tbi").className="tipo-btn"+(tipo==="Insumo"?" on-i":"");
+  document.getElementById("tbm").className="tipo-btn"+(tipo==="Material"?" on-m":"");
+  document.getElementById("bi").value="";
+  document.getElementById("si").style.display="none";
+  var ph={Herramienta:"Buscar herramienta...",Insumo:"Buscar insumo (cinta, precaución...)",Material:"Buscar material o pernería..."};
+  document.getElementById("bi").placeholder=ph[tipo];
 }
 
 // ══════════════════════════════════════════════
-//  BUSCAR ÍTEM
+//  BUSCAR ÍTEM — usa Sheets API directamente
 // ══════════════════════════════════════════════
 var tI;
-function buscaItem(v) {
+function buscaItem(v){
   clearTimeout(tI);
-  var d = document.getElementById("si");
-  if (!v || v.length < 1) { d.style.display = "none"; return; }
-  tI = setTimeout(function() {
-    apiGet("buscarItem", {q: v, tipo: TIPO}).then(function(data) {
-      if (!data.length) { d.style.display = "none"; return; }
-      d.innerHTML = data.map(function(it) {
-        var bc = it.tipo==="Herramienta" ? "bh" : (it.tipo==="Material" ? "bm" : "bi");
-        return "<div class='sug-item' onclick='addItem(\"" + esc(it.codigo) + "\",\"" + esc(it.descripcion) + "\",\"" + it.tipo + "\",\"" + esc(it.unidad||"und") + "\")'>" +
-          "<div class='sug-nom'>" + it.descripcion + "</div>" +
-          "<div class='sug-cod'><span class='badge " + bc + "'>" + it.tipo + "</span> " + it.codigo + (it.unidad ? " · " + it.unidad : "") + "</div></div>";
+  var d=document.getElementById("si");
+  if(!v||v.length<1){d.style.display="none";return;}
+  tI=setTimeout(function(){
+    var q=v.toString().trim().toLowerCase();
+    var res=[];
+    var promises=[];
+
+    // Herramientas
+    if(TIPO==="Herramienta"){
+      promises.push(
+        sheetsGet("Catalogo_Herramientas!A2:B").then(function(resp){
+          var rows=resp.values||[];
+          for(var i=0;i<rows.length&&res.length<8;i++){
+            var cod=(rows[i][0]||"").toString().toLowerCase();
+            var desc=(rows[i][1]||"").toString().toLowerCase();
+            if(cod.indexOf(q)>=0||desc.indexOf(q)>=0){
+              res.push({codigo:rows[i][0],descripcion:rows[i][1],tipo:"Herramienta",unidad:"und"});
+            }
+          }
+        })
+      );
+    }
+
+    // Insumos y Materiales — misma hoja, tipo según botón seleccionado
+    if(TIPO==="Insumo"||TIPO==="Material"){
+      promises.push(
+        sheetsGet("Catalogo_Insumos!A2:D").then(function(resp){
+          var rows=resp.values||[];
+          for(var i=0;i<rows.length&&res.length<14;i++){
+            var cod=(rows[i][0]||"").toString().toLowerCase();
+            var desc=(rows[i][1]||"").toString().toLowerCase();
+            if(cod.indexOf(q)<0&&desc.indexOf(q)<0) continue;
+            res.push({
+              codigo:rows[i][0],
+              descripcion:rows[i][1],
+              tipo:TIPO,
+              unidad:(rows[i][3]||"und").toString()
+            });
+          }
+        })
+      );
+    }
+
+    Promise.all(promises).then(function(){
+      if(!res.length){d.style.display="none";return;}
+      d.innerHTML=res.map(function(it){
+        var bc=it.tipo==="Herramienta"?"bh":(it.tipo==="Material"?"bm":"bi");
+        return "<div class='sug-item' onclick='addItem(\""+esc(it.codigo)+"\",\""+esc(it.descripcion)+"\",\""+it.tipo+"\",\""+esc(it.unidad)+"\")'>" +
+          "<div class='sug-nom'>"+it.descripcion+"</div>" +
+          "<div class='sug-cod'><span class='badge "+bc+"'>"+it.tipo+"</span> "+it.codigo+"</div></div>";
       }).join("");
-      d.style.display = "block";
-    }).catch(function(){});
-  }, 380);
+      d.style.display="block";
+    }).catch(function(){d.style.display="none";});
+  },380);
 }
 
 // ══════════════════════════════════════════════
-//  AGREGAR ÍTEM — acumula en array global
+//  AGREGAR ÍTEM
 // ══════════════════════════════════════════════
-function addItem(cod, desc, tipo, unidad) {
-  document.getElementById("si").style.display = "none";
-  document.getElementById("bi").value = "";
-  // Herramientas no se duplican en el mismo préstamo
-  if (tipo === "Herramienta" && ITEMS.some(function(i){ return i.codigo === cod; })) {
-    alert("Esa herramienta ya está en la lista."); return;
+function addItem(cod,desc,tipo,unidad){
+  document.getElementById("si").style.display="none";
+  document.getElementById("bi").value="";
+  if(tipo==="Herramienta"&&ITEMS.some(function(i){return i.codigo===cod;})){
+    alert("Esa herramienta ya está en la lista.");return;
   }
-  // Materiales: advertir si ya tiene ese material en un préstamo activo
-  // (la validación real se hace en el GS, aquí solo es informativa)
-  ITEMS.push({ codigo:cod, descripcion:desc, tipo:tipo||TIPO,
-               unidad:unidad||"und", cantidad:1, detalle:"", obs:"" });
+  ITEMS.push({codigo:cod,descripcion:desc,tipo:tipo||TIPO,unidad:unidad||"und",cantidad:1,detalle:"",obs:""});
   renderItems();
 }
 
-function remItem(i) { ITEMS.splice(i,1); renderItems(); }
+function remItem(i){ITEMS.splice(i,1);renderItems();}
 
 // ══════════════════════════════════════════════
-//  RENDER LISTA — muestra array completo
+//  RENDER LISTA
 // ══════════════════════════════════════════════
-function renderItems() {
-  var d = document.getElementById("li");
-  if (!ITEMS.length) {
-    d.innerHTML = "<div class='empty'><div class='ei'>📋</div><p>Agrega herramientas, insumos o materiales</p></div>";
-    document.getElementById("bguard").style.display = "none"; return;
+function renderItems(){
+  var d=document.getElementById("li");
+  if(!ITEMS.length){
+    d.innerHTML="<div class='empty'><div class='ei'>📋</div><p>Agrega herramientas, insumos o materiales</p></div>";
+    document.getElementById("bguard").style.display="none";return;
   }
   var cH=ITEMS.filter(function(i){return i.tipo==="Herramienta";}).length;
   var cI=ITEMS.filter(function(i){return i.tipo==="Insumo";}).length;
@@ -449,171 +470,212 @@ function renderItems() {
   if(cH) res+="<span class='badge bh'>"+cH+" herramienta"+(cH>1?"s":"")+"</span> ";
   if(cI) res+="<span class='badge bi'>"+cI+" insumo"+(cI>1?"s":"")+"</span> ";
   if(cM) res+="<span class='badge bm'>"+cM+" material"+(cM>1?"es":"")+"</span>";
-  var html = "<div class='items-resumen'>" + res + "</div>";
-  ITEMS.forEach(function(it, i) {
-    var bc  = it.tipo==="Herramienta"?"bh":(it.tipo==="Material"?"bm":"bi");
-    html += "<div class='item-row r-" + it.tipo + "'>" +
+  var html="<div class='items-resumen'>"+res+"</div>";
+  ITEMS.forEach(function(it,i){
+    var bc=it.tipo==="Herramienta"?"bh":(it.tipo==="Material"?"bm":"bi");
+    html+="<div class='item-row r-"+it.tipo+"'>" +
       "<div class='item-info'>" +
-      "<div class='item-cod'><span class='badge " + bc + "'>" + it.tipo + "</span> " + it.codigo + "</div>" +
-      "<div class='item-desc'>" + it.descripcion + "</div>" +
+      "<div class='item-cod'><span class='badge "+bc+"'>"+it.tipo+"</span> "+it.codigo+"</div>" +
+      "<div class='item-desc'>"+it.descripcion+"</div>" +
       "<div class='item-sub'>" +
-      (it.tipo==="Herramienta" ?
-        "<input type='text' placeholder='Descripción adicional: color, marca, serie...' value='" + esc(it.detalle) + "' onchange='ITEMS[" + i + "].detalle=this.value'>" : "") +
-      (it.tipo!=="Herramienta" ?
-        "<div class='qty-row'><input type='number' min='1' value='" + it.cantidad + "' onchange='ITEMS[" + i + "].cantidad=parseInt(this.value)||1'><span class='qty-unit'>" + it.unidad + "</span></div>" : "") +
-      "<input type='text' placeholder='Observación (opcional)' value='" + esc(it.obs) + "' onchange='ITEMS[" + i + "].obs=this.value'>" +
+      (it.tipo==="Herramienta"?"<input type='text' placeholder='Descripción: color, marca, serie...' value='"+esc(it.detalle)+"' onchange='ITEMS["+i+"].detalle=this.value'>":"") +
+      (it.tipo!=="Herramienta"?"<div class='qty-row'><input type='number' min='1' value='"+it.cantidad+"' onchange='ITEMS["+i+"].cantidad=parseInt(this.value)||1'><span class='qty-unit'>"+it.unidad+"</span></div>":"") +
+      "<input type='text' placeholder='Observación (opcional)' value='"+esc(it.obs)+"' onchange='ITEMS["+i+"].obs=this.value'>" +
       "</div></div>" +
-      "<button class='b-danger b-sm' onclick='remItem(" + i + ")'>✕</button></div>";
+      "<button class='b-danger b-sm' onclick='remItem("+i+")'>✕</button></div>";
   });
-  d.innerHTML = html;
-  document.getElementById("bguard").style.display = "block";
+  d.innerHTML=html;
+  document.getElementById("bguard").style.display="block";
 }
 
 // ══════════════════════════════════════════════
-//  GUARDAR PRÉSTAMO
+//  GUARDAR PRÉSTAMO — via Apps Script (escritura)
 // ══════════════════════════════════════════════
-function guardar() {
-  if (!TWK || !ITEMS.length) { alert("Selecciona trabajador y agrega ítems."); return; }
-  var btn = document.getElementById("bguard");
-  btn.textContent = "⏳ Guardando..."; btn.disabled = true;
-  console.log("Guardando préstamo...", ITEMS.length, "ítems");
-  apiPost("guardarPrestamo", {
-    codigoTrabajador: TWK.codigo,
-    nombreTrabajador: TWK.nombre || TWK.codigo,
-    cargoTrabajador:  TWK.cargo  || "",
-    items: ITEMS
-  }).then(function(r) {
-    var hora = new Date().toLocaleTimeString("es-GT",{hour:"2-digit",minute:"2-digit"});
+function guardar(){
+  if(!TWK||!ITEMS.length){alert("Selecciona trabajador y agrega ítems.");return;}
+  var btn=document.getElementById("bguard");
+  btn.textContent="⏳ Guardando...";btn.disabled=true;
+  gasPost("guardarPrestamo",{
+    codigoTrabajador:TWK.codigo,
+    nombreTrabajador:TWK.nombre||TWK.codigo,
+    cargoTrabajador: TWK.cargo||"",
+    items:ITEMS
+  }).then(function(r){
+    var hora=new Date().toLocaleTimeString("es-GT",{hour:"2-digit",minute:"2-digit"});
     var cH=ITEMS.filter(function(i){return i.tipo==="Herramienta";}).length;
     var cI=ITEMS.filter(function(i){return i.tipo==="Insumo";}).length;
     var cM=ITEMS.filter(function(i){return i.tipo==="Material";}).length;
     var det=[cH?cH+" herramienta"+(cH>1?"s":""):null,cI?cI+" insumo"+(cI>1?"s":""):null,cM?cM+" material"+(cM>1?"es":""):null].filter(Boolean).join(", ");
-    document.getElementById("rp").innerHTML =
-      "<div class='msg-ok'>✅ " + (r.idPrestamo||"") + " registrado — " + hora + "<br><small>" + (TWK.nombre||TWK.codigo) + " · " + det + "</small></div>";
-    TWK=null; ITEMS=[];
+    document.getElementById("rp").innerHTML="<div class='msg-ok'>✅ "+(r.idPrestamo||"")+" registrado — "+hora+"<br><small>"+(TWK.nombre||TWK.codigo)+" · "+det+"</small></div>";
+    TWK=null;ITEMS=[];
     document.getElementById("bt").value="";
     document.getElementById("tw").style.display="none";
     document.getElementById("ci").style.display="none";
     renderItems();
-    setTimeout(function(){ document.getElementById("rp").innerHTML=""; }, 6000);
-    btn.textContent="✅ Registrar préstamo completo"; btn.disabled=false;
-  }).catch(function(e) {
-    document.getElementById("rp").innerHTML="<div class='msg-err'>❌ Error al guardar: "+e.message+"<br><small>Verifica tu conexión e intenta de nuevo</small></div>";
-    btn.textContent="✅ Registrar préstamo completo"; btn.disabled=false;
-  });
-}
-
-// ══════════════════════════════════════════════
-//  DEVOLUCIÓN PARCIAL
-//  Cada herramienta se devuelve individualmente
-//  Las que no se devuelven quedan como pendientes
-// ══════════════════════════════════════════════
-function cargarPA(cod, nom) {
-  document.getElementById("pa").innerHTML="<div class='loading'>🔄 Cargando préstamos activos...</div>";
-  apiGet("prestamosActivos",{codigo:cod}).then(function(data){
-    mostrarPA(data,nom);
+    setTimeout(function(){document.getElementById("rp").innerHTML="";},6000);
+    btn.textContent="✅ Registrar préstamo completo";btn.disabled=false;
   }).catch(function(e){
-    document.getElementById("pa").innerHTML="<div class='msg-err'>Error: "+e.message+"</div>";
+    document.getElementById("rp").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+    btn.textContent="✅ Registrar préstamo completo";btn.disabled=false;
   });
 }
 
-function mostrarPA(data, nom) {
-  var d = document.getElementById("pa");
-  if (!data.length) {
-    d.innerHTML="<div class='empty'><div class='ei'>✅</div><p>"+nom+" no tiene herramientas pendientes</p></div>"; return;
+// ══════════════════════════════════════════════
+//  DEVOLUCIÓN — lee préstamos desde Sheets
+// ══════════════════════════════════════════════
+function cargarPA(cod,nom){
+  document.getElementById("pa").innerHTML="<div class='loading'>🔄 Cargando préstamos...</div>";
+  // Leer ambas hojas en paralelo
+  Promise.all([
+    sheetsGet("Prestamos_Herramientas!A2:H"),
+    sheetsGet("Prestamos_Detalle!A2:I")
+  ]).then(function(results){
+    var dp=results[0].values||[];
+    var dd=results[1].values||[];
+    var prestamos=[];
+    for(var i=0;i<dp.length;i++){
+      var codRow=(dp[i][2]||"").toString().trim();
+      var est=(dp[i][7]||"").toString().toLowerCase().trim();
+      if(codRow!==cod.trim()) continue;
+      if(est!=="abierto") continue;
+      var id=(dp[i][0]||"").toString();
+      var items=[];
+      for(var j=0;j<dd.length;j++){
+        if((dd[j][1]||"").toString().trim()!==id) continue;
+        var tipoIt=(dd[j][5]||"Herramienta").toString().trim();
+        var estIt=(dd[j][4]||"").toString().toLowerCase().trim();
+        if(tipoIt!=="Herramienta") continue;
+        if(estIt!=="prestada") continue;
+        items.push({
+          idDetalle:(dd[j][0]||"").toString().trim(),
+          codigo:(dd[j][2]||"").toString(),
+          descripcion:(dd[j][3]||"").toString(),
+          detalle:(dd[j][6]||"").toString()
+        });
+      }
+      if(items.length>0){
+        prestamos.push({idPrestamo:id,fecha:(dp[i][1]||"").toString(),horaSalida:(dp[i][5]||"").toString(),items:items});
+      }
+    }
+    mostrarPA(prestamos,nom);
+  }).catch(function(e){
+    document.getElementById("pa").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
+}
+
+function mostrarPA(data,nom){
+  var d=document.getElementById("pa");
+  if(!data.length){
+    d.innerHTML="<div class='empty'><div class='ei'>✅</div><p>"+nom+" no tiene herramientas pendientes</p></div>";return;
   }
-  d.innerHTML = data.map(function(p) {
-    var filas = p.items.map(function(it) {
+  d.innerHTML=data.map(function(p){
+    var filas=p.items.map(function(it){
       return "<div class='dev-item'>" +
         "<div class='dev-item-title'>🔨 "+it.descripcion+" <span class='badge bh'>"+it.codigo+"</span>" +
-        (it.detalle?"<span style='font-size:10px;color:#888;display:block'>"+it.detalle+"</span>":"") + "</div>" +
+        (it.detalle?"<span style='font-size:10px;color:#888;display:block'>"+it.detalle+"</span>":"")+"</div>" +
         "<select id='est-"+it.idDetalle+"'>" +
         "<option value='Bueno'>✅ Bueno</option>" +
         "<option value='Con daño'>⚠️ Con daño</option>" +
         "<option value='Perdida'>❌ Pérdida</option>" +
-        "<option value='Pendiente'>⏳ Pendiente (no devuelve aún)</option>" +
+        "<option value='Pendiente'>⏳ Pendiente</option>" +
         "</select>" +
         "<input type='text' id='obs-"+it.idDetalle+"' placeholder='Observación (opcional)' style='margin-bottom:0'>" +
         "</div>";
     }).join("");
     return "<div class='pa-card'>" +
-      "<div style='display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:5px'>" +
-      "<span>📄 "+p.idPrestamo+"</span><span>📅 "+p.fecha+(p.horaSalida?" · "+p.horaSalida:"")+"</span></div>" +
+      "<div style='display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:5px'><span>📄 "+p.idPrestamo+"</span><span>📅 "+p.fecha+(p.horaSalida?" · "+p.horaSalida:"")+"</span></div>" +
       "<div style='font-size:14px;font-weight:bold;color:#1F3864;margin-bottom:8px'>👷 "+nom+"</div>" +
-      filas +
+      filas+
       "<button class='btn b-ok' style='margin-top:6px' onclick='confirmarDev(\""+p.idPrestamo+"\","+JSON.stringify(p.items).replace(/"/g,"&quot;")+")'>📥 Confirmar devolución</button>" +
       "</div>";
   }).join("");
 }
 
-function confirmarDev(id, items) {
-  // Separar las que se devuelven de las que quedan pendientes
-  var dev = items.map(function(it) {
-    return {
-      idDetalle: it.idDetalle,
-      estado: (document.getElementById("est-"+it.idDetalle)||{value:"Bueno"}).value,
-      obs:    (document.getElementById("obs-" +it.idDetalle)||{value:""}).value
+function confirmarDev(id,items){
+  var dev=items.map(function(it){
+    return{
+      idDetalle:it.idDetalle,
+      estado:(document.getElementById("est-"+it.idDetalle)||{value:"Bueno"}).value,
+      obs:(document.getElementById("obs-"+it.idDetalle)||{value:""}).value
     };
   });
-  // Solo procesar las que NO son "Pendiente"
-  var aDevolver = dev.filter(function(d){ return d.estado !== "Pendiente"; });
-  if (!aDevolver.length) { alert("Selecciona al menos una herramienta para devolver."); return; }
-  apiPost("cerrarPrestamo",{idPrestamo:id, items:aDevolver}).then(function(r){
-    var msg = r.pendientes
-      ? "✅ Devolución parcial registrada — quedan herramientas pendientes"
-      : "✅ Préstamo cerrado — todas las herramientas devueltas";
+  var aDevolver=dev.filter(function(d){return d.estado!=="Pendiente";});
+  if(!aDevolver.length){alert("Selecciona al menos una herramienta para devolver.");return;}
+  gasPost("cerrarPrestamo",{idPrestamo:id,items:aDevolver}).then(function(r){
+    var msg=r.pendientes?"✅ Devolución parcial — quedan herramientas pendientes":"✅ Préstamo cerrado — todas las herramientas devueltas";
     document.getElementById("rd").innerHTML="<div class='msg-ok'>"+msg+"</div>";
     document.getElementById("pa").innerHTML="";
     document.getElementById("btd").value="";
-    setTimeout(function(){ document.getElementById("rd").innerHTML=""; },6000);
+    setTimeout(function(){document.getElementById("rd").innerHTML="";},6000);
   }).catch(function(e){
     document.getElementById("rd").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
   });
 }
 
 // ══════════════════════════════════════════════
-//  HISTORIAL — filtros por día, semana, estado
+//  HISTORIAL — lee desde Sheets directamente
 // ══════════════════════════════════════════════
 var frActivo="";
-function filtroRapido(tipo) {
+function filtroRapido(tipo){
   frActivo=tipo;
-  document.getElementById("fr0").classList.toggle("on",tipo==="hoy");
-  document.getElementById("fr1").classList.toggle("on",tipo==="semana");
-  document.getElementById("fr2").classList.toggle("on",tipo==="abierto");
-  document.getElementById("fr3").classList.toggle("on",tipo==="");
+  ["fr0","fr1","fr2","fr3"].forEach(function(id,i){
+    document.getElementById(id).classList.toggle("on",["hoy","semana","abierto",""][i]===tipo);
+  });
   document.getElementById("sh").value=(tipo==="abierto")?"abierto":"";
   cargarHist();
 }
 
-function cargarHist() {
-  var q=document.getElementById("bh").value;
-  var est=document.getElementById("sh").value;
+function cargarHist(){
+  var q=document.getElementById("bh").value.toLowerCase().trim();
+  var est=document.getElementById("sh").value.toLowerCase();
   document.getElementById("rh").innerHTML="<div class='loading'>🔄 Cargando...</div>";
-  apiGet("historial",{q:q,estado:est}).then(function(data){
-    if(!data.length){
-      document.getElementById("rh").innerHTML="<div class='empty'><div class='ei'>🔍</div><p>Sin resultados</p></div>"; return;
-    }
-    // Filtros locales de fecha
-    var lista=data;
+  Promise.all([
+    sheetsGet("Prestamos_Herramientas!A2:H"),
+    sheetsGet("Prestamos_Detalle!A2:F")
+  ]).then(function(results){
+    var dp=results[0].values||[];
+    var dd=results[1].values||[];
+    // Filtrar
     var hoy=new Date();
-    if(frActivo==="hoy"){
-      var dd=String(hoy.getDate()).padStart(2,"0");
-      var mm=String(hoy.getMonth()+1).padStart(2,"0");
-      var fHoy=dd+"/"+mm+"/"+hoy.getFullYear();
-      lista=data.filter(function(p){ return p.fecha===fHoy; });
-    } else if(frActivo==="semana"){
-      // Filtrar los últimos 7 días
-      var hace7=new Date(hoy.getTime()-7*24*60*60*1000);
-      lista=data.filter(function(p){
-        if(!p.fecha) return false;
-        var parts=p.fecha.split("/");
-        if(parts.length<3) return true;
-        var fP=new Date(parts[2],parts[1]-1,parts[0]);
-        return fP>=hace7;
+    var dd2=String(hoy.getDate()).padStart(2,"0");
+    var mm2=String(hoy.getMonth()+1).padStart(2,"0");
+    var fechaHoy=dd2+"/"+mm2+"/"+hoy.getFullYear();
+    var hace7=new Date(hoy.getTime()-7*24*60*60*1000);
+    var lista=[];
+    for(var i=dp.length-1;i>=0&&lista.length<30;i--){
+      var estRow=(dp[i][7]||"").toString().toLowerCase().trim();
+      var nom=(dp[i][3]||"").toString().toLowerCase();
+      var cod=(dp[i][2]||"").toString().toLowerCase();
+      var fecha=(dp[i][1]||"").toString();
+      if(est&&estRow!==est) continue;
+      if(q&&nom.indexOf(q)<0&&cod.indexOf(q)<0) continue;
+      if(frActivo==="hoy"&&fecha!==fechaHoy) continue;
+      if(frActivo==="semana"){
+        var parts=fecha.split("/");
+        if(parts.length===3){
+          var fP=new Date(parts[2],parts[1]-1,parts[0]);
+          if(fP<hace7) continue;
+        }
+      }
+      var id=(dp[i][0]||"").toString();
+      var items=[];
+      for(var j=0;j<dd.length;j++){
+        if((dd[j][1]||"").toString()===id){
+          items.push({descripcion:(dd[j][3]||"").toString(),tipo:(dd[j][5]||"Herramienta").toString()});
+        }
+      }
+      lista.push({
+        idPrestamo:id,fecha:fecha,
+        nombreTrabajador:(dp[i][3]||"").toString(),
+        codigoTrabajador:(dp[i][2]||"").toString(),
+        estado:estRow,
+        horaSalida:(dp[i][5]||"").toString(),
+        horaDevolucion:(dp[i][6]||"").toString(),
+        items:items
       });
     }
     if(!lista.length){
-      document.getElementById("rh").innerHTML="<div class='empty'><div class='ei'>📭</div><p>Sin registros en este período</p></div>"; return;
+      document.getElementById("rh").innerHTML="<div class='empty'><div class='ei'>🔍</div><p>Sin resultados</p></div>";return;
     }
     document.getElementById("rh").innerHTML=lista.map(function(p){
       var cls=p.estado==="cerrado"?"cerrado":"abierto";
@@ -628,12 +690,10 @@ function cargarHist() {
         ?"<div style='margin-top:7px'><button class='btn b-warn' style='padding:7px;font-size:11px;margin:0' onclick='irADev(\""+esc(p.codigoTrabajador)+"\",\""+esc(p.nombreTrabajador)+"\")'>📥 Procesar devolución</button></div>"
         :"";
       return "<div class='hist-row "+cls+"'>" +
-        "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px'>" +
-        "<span style='font-size:11px;color:#888'>📄 "+p.idPrestamo+"</span>"+badge+"</div>" +
+        "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px'><span style='font-size:11px;color:#888'>📄 "+p.idPrestamo+"</span>"+badge+"</div>" +
         "<div style='font-size:13px;font-weight:bold;color:#1F3864'>👷 "+(p.nombreTrabajador||p.codigoTrabajador)+"</div>" +
         "<div style='font-size:11px;margin-top:4px'>"+badges+"</div>" +
-        "<div style='font-size:10px;color:#888;margin-top:3px'>📅 "+p.fecha+
-        (p.horaSalida?" · "+p.horaSalida:"")+(p.horaDevolucion?" → "+p.horaDevolucion:"")+"</div>" +
+        "<div style='font-size:10px;color:#888;margin-top:3px'>📅 "+p.fecha+(p.horaSalida?" · "+p.horaSalida:"")+(p.horaDevolucion?" → "+p.horaDevolucion:"")+"</div>" +
         btnDev+"</div>";
     }).join("");
   }).catch(function(e){
@@ -641,16 +701,13 @@ function cargarHist() {
   });
 }
 
-function irADev(codigo, nombre) {
+function irADev(codigo,nombre){
   goTab(1);
   document.getElementById("btd").value=nombre;
-  cargarPA(codigo, nombre);
+  cargarPA(codigo,nombre);
 }
 
-// ══════════════════════════════════════════════
-//  UTILIDAD
-// ══════════════════════════════════════════════
-function esc(s){ return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;"); }
+function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
 </script>
 </body>
 </html>

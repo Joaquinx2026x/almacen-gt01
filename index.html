@@ -181,54 +181,57 @@ function goTab(n) {
 // ══════════════════════════════════════════════
 //  JSONP — sin CORS
 // ══════════════════════════════════════════════
-// ── API: fetch directo — funciona en móvil, incógnito y cualquier cuenta ──
-// GET: fetch simple sin headers especiales — no dispara preflight CORS
-// POST: enviado como GET con payload — Apps Script lo maneja en doGet
+// ── API via JSONP — funciona sin CORS en móvil e incógnito ──
+// ANYONE_ANONYMOUS en GS + JSONP = sin login, sin bloqueos
+function apiCall(url) {
+  return new Promise(function(resolve, reject) {
+    var id = "cb" + Date.now() + Math.floor(Math.random() * 99999);
+    var timeout = setTimeout(function() {
+      cleanup();
+      reject(new Error("Sin respuesta del servidor — intenta de nuevo"));
+    }, 20000);
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[id];
+      var el = document.getElementById(id);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+    window[id] = function(data) {
+      cleanup();
+      if (data && data.error) reject(new Error(data.error));
+      else resolve(data);
+    };
+    var script = document.createElement("script");
+    script.id  = id;
+    script.src = url + (url.indexOf("?") >= 0 ? "&" : "?") + "callback=" + id;
+    script.onerror = function() {
+      cleanup();
+      reject(new Error("Error de conexión — verifica tu internet"));
+    };
+    document.body.appendChild(script);
+  });
+}
+
 function apiGet(action, params) {
   var url = API + "?action=" + action;
-  if (params) Object.keys(params).forEach(function(k){
-    url += "&" + k + "=" + encodeURIComponent(params[k]);
-  });
-  return fetch(url, {
-    method: "GET",
-    redirect: "follow"
-  }).then(function(r) {
-    return r.text();
-  }).then(function(txt) {
-    // Apps Script puede devolver JSONP o JSON puro
-    var clean = txt.trim();
-    // Si viene como JSONP: cb12345({...}) → extraer el JSON
-    if (clean.indexOf("(") > 0 && clean.charAt(clean.length-1) === ")") {
-      clean = clean.substring(clean.indexOf("(") + 1, clean.length - 1);
-    }
-    var d = JSON.parse(clean);
-    if (d && d.error) throw new Error(d.error);
-    return d;
-  });
+  if (params) {
+    Object.keys(params).forEach(function(k) {
+      if (params[k] !== undefined && params[k] !== null && params[k] !== "") {
+        url += "&" + k + "=" + encodeURIComponent(params[k]);
+      }
+    });
+  }
+  return apiCall(url);
 }
 
 function apiPost(action, data) {
   data.action = action;
-  // Enviar como GET con payload — sin CORS porque es GET simple
-  var clean = JSON.stringify(data, function(k, v) {
-    if (v === "" || v === null || v === undefined) return undefined;
+  var payload = JSON.stringify(data, function(k, v) {
+    if (v === null || v === undefined) return undefined;
     return v;
   });
-  var url = API + "?action=" + action + "&payload=" + encodeURIComponent(clean);
-  return fetch(url, {
-    method: "GET",
-    redirect: "follow"
-  }).then(function(r) {
-    return r.text();
-  }).then(function(txt) {
-    var c = txt.trim();
-    if (c.indexOf("(") > 0 && c.charAt(c.length-1) === ")") {
-      c = c.substring(c.indexOf("(") + 1, c.length - 1);
-    }
-    var d = JSON.parse(c);
-    if (d && d.error) throw new Error(d.error);
-    return d;
-  });
+  var url = API + "?action=" + action + "&payload=" + encodeURIComponent(payload);
+  return apiCall(url);
 }
 
 // ══════════════════════════════════════════════

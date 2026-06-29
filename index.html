@@ -553,11 +553,14 @@ function confirmarDev(id, items) {
   // Solo procesar las que NO son "Pendiente"
   var aDevolver = dev.filter(function(d){ return d.estado !== "Pendiente"; });
   if (!aDevolver.length) { alert("Selecciona al menos una herramienta para devolver."); return; }
-  apiPost("cerrarPrestamo",{idPrestamo:id, items:aDevolver}).then(function(){
-    document.getElementById("rd").innerHTML="<div class='msg-ok'>✅ Devolución registrada</div>";
+  apiPost("cerrarPrestamo",{idPrestamo:id, items:aDevolver}).then(function(r){
+    var msg = r.pendientes
+      ? "✅ Devolución parcial registrada — quedan herramientas pendientes"
+      : "✅ Préstamo cerrado — todas las herramientas devueltas";
+    document.getElementById("rd").innerHTML="<div class='msg-ok'>"+msg+"</div>";
     document.getElementById("pa").innerHTML="";
     document.getElementById("btd").value="";
-    setTimeout(function(){ document.getElementById("rd").innerHTML=""; },5000);
+    setTimeout(function(){ document.getElementById("rd").innerHTML=""; },6000);
   }).catch(function(e){
     document.getElementById("rd").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
   });

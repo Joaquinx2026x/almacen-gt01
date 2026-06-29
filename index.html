@@ -181,52 +181,54 @@ function goTab(n) {
 // ══════════════════════════════════════════════
 //  JSONP — sin CORS
 // ══════════════════════════════════════════════
-function jcall(url) {
-  return new Promise(function(res, rej) {
-    var cb = "cb" + Date.now() + Math.floor(Math.random()*9999);
-    // Timeout de 15 segundos — Apps Script puede tardar al escribir en Sheets
-    var timer = setTimeout(function() {
-      delete window[cb];
-      var el = document.getElementById(cb);
-      if (el) el.remove();
-      rej(new Error("Tiempo de espera agotado — intenta de nuevo"));
-    }, 15000);
-    window[cb] = function(d) {
-      clearTimeout(timer);
-      delete window[cb];
-      var el = document.getElementById(cb);
-      if (el) el.remove();
-      if (d && d.error) rej(new Error(d.error));
-      else res(d);
-    };
-    var s = document.createElement("script");
-    s.id = cb;
-    s.onerror = function() {
-      clearTimeout(timer);
-      delete window[cb];
-      rej(new Error("Error de red — verifica tu conexión"));
-    };
-    s.src = url + "&callback=" + cb;
-    document.body.appendChild(s);
-  });
-}
-
+// ── API: fetch directo — funciona en móvil, incógnito y cualquier cuenta ──
+// GET: fetch simple sin headers especiales — no dispara preflight CORS
+// POST: enviado como GET con payload — Apps Script lo maneja en doGet
 function apiGet(action, params) {
   var url = API + "?action=" + action;
   if (params) Object.keys(params).forEach(function(k){
     url += "&" + k + "=" + encodeURIComponent(params[k]);
   });
-  return jcall(url);
+  return fetch(url, {
+    method: "GET",
+    redirect: "follow"
+  }).then(function(r) {
+    return r.text();
+  }).then(function(txt) {
+    // Apps Script puede devolver JSONP o JSON puro
+    var clean = txt.trim();
+    // Si viene como JSONP: cb12345({...}) → extraer el JSON
+    if (clean.indexOf("(") > 0 && clean.charAt(clean.length-1) === ")") {
+      clean = clean.substring(clean.indexOf("(") + 1, clean.length - 1);
+    }
+    var d = JSON.parse(clean);
+    if (d && d.error) throw new Error(d.error);
+    return d;
+  });
 }
 
 function apiPost(action, data) {
   data.action = action;
-  // Limpiar campos vacíos para reducir tamaño del payload
+  // Enviar como GET con payload — sin CORS porque es GET simple
   var clean = JSON.stringify(data, function(k, v) {
     if (v === "" || v === null || v === undefined) return undefined;
     return v;
   });
-  return jcall(API + "?action=" + action + "&payload=" + encodeURIComponent(clean));
+  var url = API + "?action=" + action + "&payload=" + encodeURIComponent(clean);
+  return fetch(url, {
+    method: "GET",
+    redirect: "follow"
+  }).then(function(r) {
+    return r.text();
+  }).then(function(txt) {
+    var c = txt.trim();
+    if (c.indexOf("(") > 0 && c.charAt(c.length-1) === ")") {
+      c = c.substring(c.indexOf("(") + 1, c.length - 1);
+    }
+    var d = JSON.parse(c);
+    if (d && d.error) throw new Error(d.error);
+    return d;
+  });
 }
 
 // ══════════════════════════════════════════════

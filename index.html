@@ -184,7 +184,15 @@ function goTab(n) {
 function jcall(url) {
   return new Promise(function(res, rej) {
     var cb = "cb" + Date.now() + Math.floor(Math.random()*9999);
+    // Timeout de 15 segundos — Apps Script puede tardar al escribir en Sheets
+    var timer = setTimeout(function() {
+      delete window[cb];
+      var el = document.getElementById(cb);
+      if (el) el.remove();
+      rej(new Error("Tiempo de espera agotado — intenta de nuevo"));
+    }, 15000);
     window[cb] = function(d) {
+      clearTimeout(timer);
       delete window[cb];
       var el = document.getElementById(cb);
       if (el) el.remove();
@@ -193,7 +201,11 @@ function jcall(url) {
     };
     var s = document.createElement("script");
     s.id = cb;
-    s.onerror = function() { delete window[cb]; rej(new Error("Error de red")); };
+    s.onerror = function() {
+      clearTimeout(timer);
+      delete window[cb];
+      rej(new Error("Error de red — verifica tu conexión"));
+    };
     s.src = url + "&callback=" + cb;
     document.body.appendChild(s);
   });
@@ -209,7 +221,12 @@ function apiGet(action, params) {
 
 function apiPost(action, data) {
   data.action = action;
-  return jcall(API + "?action=" + action + "&payload=" + encodeURIComponent(JSON.stringify(data)));
+  // Limpiar campos vacíos para reducir tamaño del payload
+  var clean = JSON.stringify(data, function(k, v) {
+    if (v === "" || v === null || v === undefined) return undefined;
+    return v;
+  });
+  return jcall(API + "?action=" + action + "&payload=" + encodeURIComponent(clean));
 }
 
 // ══════════════════════════════════════════════
@@ -454,6 +471,7 @@ function guardar() {
   if (!TWK || !ITEMS.length) { alert("Selecciona trabajador y agrega ítems."); return; }
   var btn = document.getElementById("bguard");
   btn.textContent = "⏳ Guardando..."; btn.disabled = true;
+  console.log("Guardando préstamo...", ITEMS.length, "ítems");
   apiPost("guardarPrestamo", {
     codigoTrabajador: TWK.codigo,
     nombreTrabajador: TWK.nombre || TWK.codigo,
@@ -475,7 +493,7 @@ function guardar() {
     setTimeout(function(){ document.getElementById("rp").innerHTML=""; }, 6000);
     btn.textContent="✅ Registrar préstamo completo"; btn.disabled=false;
   }).catch(function(e) {
-    document.getElementById("rp").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+    document.getElementById("rp").innerHTML="<div class='msg-err'>❌ Error al guardar: "+e.message+"<br><small>Verifica tu conexión e intenta de nuevo</small></div>";
     btn.textContent="✅ Registrar préstamo completo"; btn.disabled=false;
   });
 }

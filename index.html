@@ -614,10 +614,19 @@ function cargarHist(){
   document.getElementById("rh").innerHTML="<div class='loading'>🔄 Cargando...</div>";
   Promise.all([
     sheetsGet("Prestamos_Herramientas!A2:H"),
-    sheetsGet("Prestamos_Detalle!A2:F")
+    sheetsGet("Prestamos_Detalle!A2:F"),
+    sheetsGet("Personal_GT01!A2:C")
   ]).then(function(results){
     var dp=results[0].values||[];
     var dd=results[1].values||[];
+    var dpers=results[2].values||[];
+    // Mapa código → nombre, de respaldo para registros viejos sin nombre guardado
+    var mapaNom={};
+    for(var p=0;p<dpers.length;p++){
+      var cP=(dpers[p][0]||"").toString().trim();
+      var nP=(dpers[p][1]||"").toString().trim();
+      if(cP&&nP) mapaNom[cP.toLowerCase()]=nP;
+    }
     // Filtrar
     var hoy=new Date();
     var dd2=String(hoy.getDate()).padStart(2,"0");
@@ -647,10 +656,13 @@ function cargarHist(){
           items.push({descripcion:(dd[j][3]||"").toString(),tipo:(dd[j][5]||"Herramienta").toString()});
         }
       }
+      var nomGuardado=(dp[i][3]||"").toString().trim();
+      var codActual=(dp[i][2]||"").toString().trim();
+      var nomFinal=nomGuardado||mapaNom[codActual.toLowerCase()]||"";
       lista.push({
         idPrestamo:id,fecha:fecha,
-        nombreTrabajador:(dp[i][3]||"").toString(),
-        codigoTrabajador:(dp[i][2]||"").toString(),
+        nombreTrabajador:nomFinal,
+        codigoTrabajador:codActual,
         estado:estRow,
         horaSalida:(dp[i][5]||"").toString(),
         horaDevolucion:(dp[i][6]||"").toString(),

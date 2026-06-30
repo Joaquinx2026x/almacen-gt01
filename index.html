@@ -474,15 +474,21 @@ function renderItems(){
 // ══════════════════════════════════════════════
 //  GUARDAR PRÉSTAMO — via Apps Script (escritura)
 // ══════════════════════════════════════════════
+var ENVIANDO_PRESTAMO=false; // evita doble registro por doble toque o reintento de red
 function guardar(){
+  if(ENVIANDO_PRESTAMO) return; // ya hay un guardado en curso, ignora el toque repetido
   if(!TWK||!ITEMS.length){alert("Selecciona trabajador y agrega ítems.");return;}
+  ENVIANDO_PRESTAMO=true;
   var btn=document.getElementById("bguard");
   btn.textContent="⏳ Guardando...";btn.disabled=true;
+  // Clave única por intento — el backend la usa para detectar y bloquear duplicados
+  var idemKey=Date.now()+"-"+Math.random().toString(36).slice(2,10);
   gasPost("guardarPrestamo",{
     codigoTrabajador:TWK.codigo,
     nombreTrabajador:TWK.nombre||TWK.codigo,
     cargoTrabajador: TWK.cargo||"",
-    items:ITEMS
+    items:ITEMS,
+    idemKey:idemKey
   }).then(function(r){
     var hora=new Date().toLocaleTimeString("es-GT",{hour:"2-digit",minute:"2-digit"});
     var cH=ITEMS.filter(function(i){return i.tipo==="Herramienta";}).length;
@@ -497,9 +503,11 @@ function guardar(){
     renderItems();
     setTimeout(function(){document.getElementById("rp").innerHTML="";},6000);
     btn.textContent="✅ Registrar préstamo completo";btn.disabled=false;
+    ENVIANDO_PRESTAMO=false;
   }).catch(function(e){
     document.getElementById("rp").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
     btn.textContent="✅ Registrar préstamo completo";btn.disabled=false;
+    ENVIANDO_PRESTAMO=false;
   });
 }
 

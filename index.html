@@ -79,6 +79,12 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 .empty{text-align:center;padding:20px;color:#aaa}
 .empty .ei{font-size:30px;margin-bottom:5px}
 .empty p{font-size:12px}
+.rep-sec{margin-bottom:14px}
+.rep-tit{font-size:12px;font-weight:bold;color:#1F3864;margin-bottom:7px;display:flex;align-items:center;gap:5px}
+.rep-tabla{width:100%;border-collapse:collapse;font-size:11px}
+.rep-tabla th{background:#EBF3FB;color:#1F3864;padding:6px 5px;text-align:left;border-bottom:2px solid #BDD7EE}
+.rep-tabla td{padding:6px 5px;border-bottom:1px solid #f0f0f0}
+.rep-meta{font-size:10px;color:#888;margin-bottom:10px}
 </style>
 </head>
 <body>
@@ -87,6 +93,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <div class="tab on"  onclick="goTab(0)">📤 Préstamo</div>
   <div class="tab"     onclick="goTab(1)">📥 Devolución</div>
   <div class="tab"     onclick="goTab(2)">📋 Historial</div>
+  <div class="tab"     onclick="goTab(3)">📊 Reportes</div>
 </div>
 
 <!-- PRÉSTAMO -->
@@ -155,6 +162,19 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   </div>
   <div id="rh"><div class="empty"><div class="ei">📋</div><p>Usa el filtro para buscar</p></div></div>
 </div>
+
+<!-- REPORTES -->
+<div id="s3" class="scr">
+  <div class="card">
+    <div class="ctit">📊 Informe diario</div>
+    <input type="date" id="fechaInforme">
+    <button class="btn b-blue" onclick="generarInforme()">📊 Generar informe</button>
+  </div>
+  <div id="ri"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <script>
@@ -709,6 +729,198 @@ function irADev(codigo,nombre){
   goTab(1);
   document.getElementById("btd").value=nombre;
   cargarPA(codigo,nombre);
+}
+
+// ══════════════════════════════════════════════
+//  REPORTES — informe diario (solo lectura, genera PDF local)
+// ══════════════════════════════════════════════
+var REPORTE_ACTUAL=null;
+
+// Fecha de hoy por defecto en el selector
+(function initFechaInforme(){
+  var el=document.getElementById("fechaInforme");
+  if(el){
+    var h=new Date();
+    el.value=h.getFullYear()+"-"+String(h.getMonth()+1).padStart(2,"0")+"-"+String(h.getDate()).padStart(2,"0");
+  }
+})();
+
+function generarInforme(){
+  var val=document.getElementById("fechaInforme").value; // yyyy-mm-dd
+  if(!val){alert("Selecciona una fecha.");return;}
+  var partes=val.split("-");
+  var fechaSel=partes[2]+"/"+partes[1]+"/"+partes[0]; // dd/mm/yyyy, como está en la hoja
+
+  document.getElementById("ri").innerHTML="<div class='loading'>🔄 Generando informe...</div>";
+
+  Promise.all([
+    sheetsGet("Prestamos_Herramientas!A2:H"),
+    sheetsGet("Prestamos_Detalle!A2:F"),
+    sheetsGet("Personal_GT01!A2:C")
+  ]).then(function(results){
+    var dp=results[0].values||[];
+    var dd=results[1].values||[];
+    var dpers=results[2].values||[];
+
+    var mapaNom={};
+    for(var p=0;p<dpers.length;p++){
+      var cP=(dpers[p][0]||"").toString().trim();
+      var nP=(dpers[p][1]||"").toString().trim();
+      if(cP&&nP) mapaNom[cP.toLowerCase()]=nP;
+    }
+
+    function itemsDe(id){
+      var out=[];
+      for(var j=0;j<dd.length;j++){
+        if((dd[j][1]||"").toString()===id){
+          out.push({descripcion:(dd[j][3]||"").toString(),tipo:(dd[j][5]||"Herramienta").toString()});
+        }
+      }
+      return out;
+    }
+
+    var movimientosDia=[];
+    var enCampo=[];
+
+    for(var i=0;i<dp.length;i++){
+      var id=(dp[i][0]||"").toString();
+      if(!id) continue;
+      var fecha=(dp[i][1]||"").toString().trim();
+      var codigo=(dp[i][2]||"").toString().trim();
+      var nomGuardado=(dp[i][3]||"").toString().trim();
+      var nombre=nomGuardado||mapaNom[codigo.toLowerCase()]||"";
+      var horaSalida=(dp[i][5]||"").toString();
+      var horaDevolucion=(dp[i][6]||"").toString();
+      var estado=(dp[i][7]||"").toString().toLowerCase().trim();
+      var items=itemsDe(id);
+
+      if(fecha===fechaSel){
+        movimientosDia.push({idPrestamo:id,nombre:nombre,codigo:codigo,horaSalida:horaSalida,horaDevolucion:horaDevolucion,estado:estado,items:items});
+      }
+      if(estado==="abierto"){
+        enCampo.push({idPrestamo:id,nombre:nombre,codigo:codigo,fecha:fecha,horaSalida:horaSalida,items:items});
+      }
+    }
+
+    // Resumen por trabajador (solo lo que sigue en campo)
+    var resumenMap={};
+    enCampo.forEach(function(p){
+      var key=p.codigo||p.nombre;
+      if(!resumenMap[key]) resumenMap[key]={nombre:p.nombre,codigo:p.codigo,cantidad:0,items:[]};
+      resumenMap[key].cantidad+=p.items.length;
+      p.items.forEach(function(it){resumenMap[key].items.push(it.descripcion);});
+    });
+    var resumen=Object.keys(resumenMap).map(function(k){return resumenMap[k];})
+      .sort(function(a,b){return b.cantidad-a.cantidad;});
+
+    REPORTE_ACTUAL={fechaSel:fechaSel,movimientosDia:movimientosDia,enCampo:enCampo,resumen:resumen};
+    mostrarInforme(REPORTE_ACTUAL);
+  }).catch(function(e){
+    document.getElementById("ri").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
+}
+
+function mostrarInforme(r){
+  var d=document.getElementById("ri");
+  var html="";
+
+  html+="<div class='card'><div class='rep-meta'>📅 Informe del "+r.fechaSel+" · generado el "+new Date().toLocaleString("es-GT")+"</div>";
+  html+="<button class='btn b-ok' onclick='descargarPDF()'>📄 Descargar PDF</button></div>";
+
+  // Bloque 1: movimientos del día
+  html+="<div class='card rep-sec'><div class='rep-tit'>📦 Movimientos registrados ese día ("+r.movimientosDia.length+")</div>";
+  if(!r.movimientosDia.length){
+    html+="<div class='empty'><div class='ei'>📭</div><p>Sin movimientos ese día</p></div>";
+  } else {
+    html+="<table class='rep-tabla'><tr><th>Trabajador</th><th>Ítems</th><th>Salida</th><th>Devolución</th></tr>"+
+      r.movimientosDia.map(function(p){
+        var itemsTxt=p.items.map(function(it){return it.descripcion;}).join(", ")||"—";
+        return "<tr><td>"+(p.nombre||"(sin nombre)")+" · "+p.codigo+"</td><td>"+itemsTxt+"</td><td>"+(p.horaSalida||"—")+"</td><td>"+(p.horaDevolucion||"—")+"</td></tr>";
+      }).join("")+"</table>";
+  }
+  html+="</div>";
+
+  // Bloque 2: en campo (estado actual)
+  html+="<div class='card rep-sec'><div class='rep-tit'>🟡 Herramientas actualmente en campo ("+r.enCampo.length+")</div>";
+  if(!r.enCampo.length){
+    html+="<div class='empty'><div class='ei'>✅</div><p>No hay herramientas pendientes de devolución</p></div>";
+  } else {
+    html+="<table class='rep-tabla'><tr><th>Trabajador</th><th>Ítems</th><th>Desde</th></tr>"+
+      r.enCampo.map(function(p){
+        var itemsTxt=p.items.map(function(it){return it.descripcion;}).join(", ")||"—";
+        return "<tr><td>"+(p.nombre||"(sin nombre)")+" · "+p.codigo+"</td><td>"+itemsTxt+"</td><td>"+p.fecha+" "+(p.horaSalida||"")+"</td></tr>";
+      }).join("")+"</table>";
+  }
+  html+="</div>";
+
+  // Bloque 3: resumen por trabajador
+  html+="<div class='card rep-sec'><div class='rep-tit'>👷 Resumen por trabajador (con pendientes)</div>";
+  if(!r.resumen.length){
+    html+="<div class='empty'><div class='ei'>✅</div><p>Nadie tiene herramientas pendientes</p></div>";
+  } else {
+    html+="<table class='rep-tabla'><tr><th>Trabajador</th><th>Código</th><th>Cant.</th></tr>"+
+      r.resumen.map(function(x){
+        return "<tr><td>"+(x.nombre||"(sin nombre)")+"</td><td>"+x.codigo+"</td><td>"+x.cantidad+"</td></tr>";
+      }).join("")+"</table>";
+  }
+  html+="</div>";
+
+  d.innerHTML=html;
+}
+
+function descargarPDF(){
+  if(!REPORTE_ACTUAL){alert("Primero genera el informe.");return;}
+  if(!window.jspdf){alert("No se pudo cargar el generador de PDF. Verifica tu conexión e intenta de nuevo.");return;}
+  var r=REPORTE_ACTUAL;
+  var doc=new window.jspdf.jsPDF();
+  var ahora=new Date();
+  var fechaGen=ahora.getFullYear()+"-"+String(ahora.getMonth()+1).padStart(2,"0")+"-"+String(ahora.getDate()).padStart(2,"0");
+  var horaGen=String(ahora.getHours()).padStart(2,"0")+String(ahora.getMinutes()).padStart(2,"0");
+
+  doc.setFontSize(14);
+  doc.text("Informe diario — Almacén GT01 Coatepeque",14,15);
+  doc.setFontSize(9);
+  doc.setTextColor(100);
+  doc.text("Fecha del informe: "+r.fechaSel+"   ·   Generado: "+ahora.toLocaleString("es-GT"),14,21);
+
+  var y=28;
+
+  doc.setFontSize(11);doc.setTextColor(20);
+  doc.text("Movimientos registrados ese dia ("+r.movimientosDia.length+")",14,y);
+  doc.autoTable({
+    startY:y+3,
+    head:[["Trabajador","Codigo","Items","Salida","Devolucion"]],
+    body:r.movimientosDia.length? r.movimientosDia.map(function(p){
+      return[p.nombre||"(sin nombre)",p.codigo,p.items.map(function(it){return it.descripcion;}).join(", ")||"-",p.horaSalida||"-",p.horaDevolucion||"-"];
+    }):[["Sin movimientos ese dia","","","",""]],
+    styles:{fontSize:8},headStyles:{fillColor:[31,56,100]},margin:{left:14,right:14}
+  });
+  y=doc.lastAutoTable.finalY+10;
+
+  doc.setFontSize(11);
+  doc.text("Herramientas actualmente en campo ("+r.enCampo.length+")",14,y);
+  doc.autoTable({
+    startY:y+3,
+    head:[["Trabajador","Codigo","Items","Desde"]],
+    body:r.enCampo.length? r.enCampo.map(function(p){
+      return[p.nombre||"(sin nombre)",p.codigo,p.items.map(function(it){return it.descripcion;}).join(", ")||"-",p.fecha+" "+(p.horaSalida||"")];
+    }):[["Nada pendiente","","",""]],
+    styles:{fontSize:8},headStyles:{fillColor:[244,185,66],textColor:[50,40,0]},margin:{left:14,right:14}
+  });
+  y=doc.lastAutoTable.finalY+10;
+
+  doc.setFontSize(11);
+  doc.text("Resumen por trabajador",14,y);
+  doc.autoTable({
+    startY:y+3,
+    head:[["Trabajador","Codigo","Cantidad"]],
+    body:r.resumen.length? r.resumen.map(function(x){
+      return[x.nombre||"(sin nombre)",x.codigo,String(x.cantidad)];
+    }):[["Nadie tiene pendientes","",""]],
+    styles:{fontSize:8},headStyles:{fillColor:[55,86,35]},margin:{left:14,right:14}
+  });
+
+  doc.save("Informe_GT01_"+fechaGen+"_"+horaGen+".pdf");
 }
 
 function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}

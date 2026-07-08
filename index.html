@@ -85,9 +85,41 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 .rep-tabla th{background:#EBF3FB;color:#1F3864;padding:6px 5px;text-align:left;border-bottom:2px solid #BDD7EE}
 .rep-tabla td{padding:6px 5px;border-bottom:1px solid #f0f0f0}
 .rep-meta{font-size:10px;color:#888;margin-bottom:10px}
+
+/* Login */
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:#1F3864}
+.login-box{background:#fff;border-radius:14px;padding:26px 22px;width:100%;max-width:340px;box-shadow:0 4px 20px rgba(0,0,0,.25)}
+.login-box h2{color:#1F3864;font-size:18px;margin:0 0 4px;text-align:center}
+.login-box p{color:#888;font-size:12px;text-align:center;margin:0 0 18px}
+.login-box input{width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:15px;margin-bottom:10px}
+.login-box button{width:100%;padding:12px;background:#1F3864;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:bold}
+.login-err{background:#FCE4E4;color:#8a1f1f;border:1px solid #E67373;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;display:none}
+
+/* Sesión activa */
+#sesionBar{background:#EBF3FB;border-bottom:1px solid #BDD7EE;padding:8px 14px;font-size:12px;color:#1F3864;display:flex;justify-content:space-between;align-items:center}
+#sesionBar button{background:none;border:none;color:#1F3864;text-decoration:underline;font-size:11px;padding:0}
 </style>
 </head>
 <body>
+
+<!-- PANTALLA DE LOGIN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h2>🔒 Almacén GT01</h2>
+    <p>Coatepeque · SOLTECING</p>
+    <div class="login-err" id="loginErr">Usuario o PIN incorrecto</div>
+    <input type="text" id="loginUser" placeholder="Usuario" autocomplete="username">
+    <input type="password" id="loginPin" placeholder="PIN" autocomplete="current-password" inputmode="numeric">
+    <button onclick="intentarLogin()">Ingresar</button>
+  </div>
+</div>
+
+<!-- CONTENIDO DE LA APP (oculto hasta iniciar sesión) -->
+<div id="appContent" style="display:none">
+<div id="sesionBar">
+  <span>👤 Sesión activa: <b id="sesionNombre"></b></span>
+  <button onclick="cerrarSesion()">Cerrar sesión</button>
+</div>
 <div class="hdr"><h1>🏗 Almacén GT01</h1><span>Coatepeque · SOLTECING</span></div>
 <div class="tabs">
   <div class="tab on"  onclick="goTab(0)">📤 Préstamo</div>
@@ -211,6 +243,59 @@ var GAS_URL = "https://script.google.com/macros/s/AKfycbykWBcTogp7N0gXLuVbYiozD3
 // ── Estado global ──
 var TWK   = null;
 var ITEMS = [];
+var SESION = null;
+
+// ══════════════════════════════════════════════
+//  LOGIN / SESIÓN — cada quien usa su propio teléfono,
+//  así que la sesión se queda guardada en el dispositivo
+//  hasta que la persona la cierre manualmente.
+// ══════════════════════════════════════════════
+function iniciarApp(){
+  var guardada=null;
+  try{ guardada=JSON.parse(localStorage.getItem("gt01_sesion")||"null"); }catch(e){}
+  if(guardada && guardada.nombre){
+    SESION=guardada;
+    mostrarApp();
+  }
+}
+
+function intentarLogin(){
+  var usuario=document.getElementById("loginUser").value.trim();
+  var pin=document.getElementById("loginPin").value.trim();
+  var errBox=document.getElementById("loginErr");
+  errBox.style.display="none";
+  if(!usuario||!pin){
+    errBox.textContent="Escribe tu usuario y tu PIN.";
+    errBox.style.display="block";
+    return;
+  }
+  gasPost("login",{usuario:usuario,pin:pin}).then(function(r){
+    if(r && r.ok){
+      SESION={usuario:r.usuario,nombre:r.nombre};
+      localStorage.setItem("gt01_sesion",JSON.stringify(SESION));
+      mostrarApp();
+    } else {
+      errBox.textContent="Usuario o PIN incorrecto.";
+      errBox.style.display="block";
+    }
+  }).catch(function(){
+    errBox.textContent="No se pudo conectar. Verifica tu conexión e intenta de nuevo.";
+    errBox.style.display="block";
+  });
+}
+
+function mostrarApp(){
+  document.getElementById("loginScreen").style.display="none";
+  document.getElementById("appContent").style.display="block";
+  document.getElementById("sesionNombre").textContent=SESION.nombre;
+}
+
+function cerrarSesion(){
+  localStorage.removeItem("gt01_sesion");
+  location.reload();
+}
+
+iniciarApp();
 var TIPO  = "Herramienta";
 var qrRdr = null;
 var qrMode= -1;
@@ -530,7 +615,8 @@ function guardar(){
     nombreTrabajador:TWK.nombre||TWK.codigo,
     cargoTrabajador: TWK.cargo||"",
     items:ITEMS,
-    idemKey:idemKey
+    idemKey:idemKey,
+    entregadoPor: (SESION&&SESION.nombre)||"Almacenista"
   }).then(function(r){
     var hora=new Date().toLocaleTimeString("es-GT",{hour:"2-digit",minute:"2-digit"});
     var cH=ITEMS.filter(function(i){return i.tipo==="Herramienta";}).length;
@@ -641,7 +727,7 @@ function confirmarDev(id,items){
   });
   var aDevolver=dev.filter(function(d){return d.estado!=="Pendiente";});
   if(!aDevolver.length){alert("Selecciona al menos una herramienta para devolver.");return;}
-  gasPost("cerrarPrestamo",{idPrestamo:id,items:aDevolver}).then(function(r){
+  gasPost("cerrarPrestamo",{idPrestamo:id,items:aDevolver,recibidoPor:(SESION&&SESION.nombre)||"Almacenista"}).then(function(r){
     var msg=r.pendientes?"✅ Devolución parcial — quedan herramientas pendientes":"✅ Préstamo cerrado — todas las herramientas devueltas";
     document.getElementById("rd").innerHTML="<div class='msg-ok'>"+msg+"</div>";
     setTimeout(function(){document.getElementById("rd").innerHTML="";},6000);
@@ -670,7 +756,7 @@ function cargarHist(){
   var est=document.getElementById("sh").value.toLowerCase();
   document.getElementById("rh").innerHTML="<div class='loading'>🔄 Cargando...</div>";
   Promise.all([
-    sheetsGet("Prestamos_Herramientas!A2:H"),
+    sheetsGet("Prestamos_Herramientas!A2:K"),
     sheetsGet("Prestamos_Detalle!A2:I"),
     sheetsGet("Personal_GT01!A2:C")
   ]).then(function(results){
@@ -710,7 +796,7 @@ function cargarHist(){
       var items=[];
       for(var j=0;j<dd.length;j++){
         if((dd[j][1]||"").toString()===id){
-          items.push({descripcion:(dd[j][3]||"").toString(),tipo:(dd[j][5]||"Herramienta").toString(),detalle:(dd[j][6]||"").toString(),cantidad:(dd[j][7]||"").toString(),obs:(dd[j][8]||"").toString()});
+          items.push({codigo:(dd[j][2]||"").toString(),descripcion:(dd[j][3]||"").toString(),tipo:(dd[j][5]||"Herramienta").toString(),detalle:(dd[j][6]||"").toString(),cantidad:(dd[j][7]||"").toString(),obs:(dd[j][8]||"").toString()});
         }
       }
       var nomGuardado=(dp[i][3]||"").toString().trim();
@@ -723,6 +809,8 @@ function cargarHist(){
         estado:estRow,
         horaSalida:(dp[i][5]||"").toString(),
         horaDevolucion:(dp[i][6]||"").toString(),
+        recibidoPor:(dp[i][8]||"").toString(),
+        entregadoPor:(dp[i][10]||"").toString(),
         items:items
       });
     }
@@ -740,8 +828,9 @@ function cargarHist(){
       }).join("")+(p.items.length>4?"<span style='color:#888;font-size:10px'> +"+( p.items.length-4)+" más</span>":"");
       var detallesTxt=p.items.map(function(it){
         var t=fmtDetalleItem(it);
-        return t?(it.descripcion+": "+t):null;
-      }).filter(Boolean).join(" · ");
+        var base=(it.codigo?("["+it.codigo+"] "):"")+it.descripcion;
+        return t?(base+": "+t):base;
+      }).join(" · ");
       var btnDev=p.estado!=="cerrado"
         ?"<div style='margin-top:7px'><button class='btn b-warn' style='padding:7px;font-size:11px;margin:0' onclick='irADev(\""+esc(p.codigoTrabajador)+"\",\""+esc(p.nombreTrabajador)+"\")'>📥 Procesar devolución</button></div>"
         :"";
@@ -751,6 +840,8 @@ function cargarHist(){
         "<div style='font-size:11px;margin-top:4px'>"+badges+"</div>" +
         (detallesTxt?"<div style='font-size:10px;color:#666;margin-top:2px;font-style:italic'>🔎 "+detallesTxt+"</div>":"")+
         "<div style='font-size:10px;color:#888;margin-top:3px'>📅 "+p.fecha+(p.horaSalida?" · "+p.horaSalida:"")+(p.horaDevolucion?" → "+p.horaDevolucion:"")+"</div>" +
+        (p.entregadoPor?"<div style='font-size:10px;color:#888'>📤 Entregó: "+p.entregadoPor+"</div>":"")+
+        (p.recibidoPor?"<div style='font-size:10px;color:#888'>📥 Recibió: "+p.recibidoPor+"</div>":"")+
         btnDev+"</div>";
     }).join("");
   }).catch(function(e){
@@ -784,7 +875,8 @@ var REPORTE_ACTUAL=null;
 
 function fmtItem(it){
   var t=fmtDetalleItem(it);
-  return t ? (it.descripcion+" ("+t+")") : it.descripcion;
+  var base=(it.codigo?("["+it.codigo+"] "):"")+it.descripcion;
+  return t ? (base+" ("+t+")") : base;
 }
 
 // Rango de fechas activo por defecto: hoy
@@ -869,7 +961,7 @@ function generarInforme(){
         if((dd[j][1]||"").toString()!==id) continue;
         var tipoIt=(dd[j][5]||"Herramienta").toString();
         if(filtroTipo&&tipoIt!==filtroTipo) continue;
-        out.push({descripcion:(dd[j][3]||"").toString(),tipo:tipoIt,detalle:(dd[j][6]||"").toString(),cantidad:(dd[j][7]||"").toString(),obs:(dd[j][8]||"").toString()});
+        out.push({codigo:(dd[j][2]||"").toString(),descripcion:(dd[j][3]||"").toString(),tipo:tipoIt,detalle:(dd[j][6]||"").toString(),cantidad:(dd[j][7]||"").toString(),obs:(dd[j][8]||"").toString()});
       }
       return out;
     }
@@ -1096,5 +1188,6 @@ function descargarPDF(){
 
 function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
 </script>
+</div><!-- /appContent -->
 </body>
 </html>

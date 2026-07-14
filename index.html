@@ -118,7 +118,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 <!-- CONTENIDO DE LA APP (oculto hasta iniciar sesión) -->
 <div id="appContent" style="display:none">
 <div id="sesionBar">
-  <span>👤 Sesión activa: <b id="sesionNombre"></b></span>
+  <span>👤 Sesión activa: <b id="sesionNombre"></b> <span style="color:#8ba7c7">· v<span id="verApp"></span></span></span>
   <button onclick="cerrarSesion()">Cerrar sesión</button>
 </div>
 <div class="hdr"><h1>🏗 Almacén GT01</h1><span>Coatepeque · SOLTECING</span></div>
@@ -241,8 +241,48 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <script>
+// ═══════════════════════════════════════════════════════════
+// ALMACÉN GT01 — Frontend (index.html)
+//
+// VERSIÓN ACTUAL: 1.5.0   (14/07/2026)
+// Debe coincidir siempre con la versión de Code.gs — son un solo
+// sistema, aunque vivan en dos archivos distintos.
+//
+// Ver el historial completo de versiones en el comentario de
+// encabezado de Code.gs (para no repetirlo dos veces).
+// ═══════════════════════════════════════════════════════════
+var APP_VERSION = "1.5.0";
+
+// ═══════════════════════════════════════════════════════════
+// ÍNDICE — mapa rápido de este archivo, para ubicarte sin tener
+// que leer todo. Buscá el título (Ctrl+F / Cmd+F) para saltar
+// directo a esa sección.
+//
+//  CONFIG               → claves de conexión (Sheets + Apps Script)
+//  LOGIN / SESIÓN        → pantalla de acceso y sesión activa
+//  TABS                  → cambio entre las 5 pestañas de la app
+//  PITIDO                → sonido al escanear un QR
+//  QR (toggleQR)          → prender/apagar la cámara del escáner
+//  BUSCAR TRABAJADOR      → autocompletado al escribir o escanear
+//  TIPO                   → elegir Herramienta/Insumo/Material
+//  BUSCAR ÍTEM            → autocompletado del catálogo
+//  addItem / renderItems  → agregar/quitar ítems al préstamo actual
+//  guardar()              → ⭐ registra el préstamo (envía a Code.gs)
+//  DEVOLUCIÓN (cargarPA)  → carga lo pendiente de un trabajador
+//  confirmarDev()         → ⭐ registra la devolución (envía a Code.gs)
+//  HISTORIAL (cargarHist) → lista y filtra préstamos pasados
+//  REPORTES               → informes por rango de fecha + PDF
+//  INVENTARIO             → buscar/editar/agregar catálogo
+//  esc()                  → limpia texto para usarlo en HTML sin romperlo
+//
+//  ⭐ = las dos funciones que de verdad escriben datos nuevos;
+//  todo lo demás en este archivo solo LEE de Google Sheets.
+// ═══════════════════════════════════════════════════════════
+
 // ══════════════════════════════════════════════
-//  CONFIG
+//  CONFIG — claves de conexión. Si algún día cambia la hoja de
+//  cálculo o se vuelve a publicar el Apps Script con otra URL,
+//  es ÚNICAMENTE aquí donde hay que actualizarlo.
 // ══════════════════════════════════════════════
 // Google Sheets API — lectura pública sin login
 var SHEET_ID  = "1SWv_qZLoAA2Du8_G1RzqoraemFiTcioDNg_BT0yWI3U";
@@ -301,6 +341,7 @@ function mostrarApp(){
   document.getElementById("loginScreen").style.display="none";
   document.getElementById("appContent").style.display="block";
   document.getElementById("sesionNombre").textContent=SESION.nombre;
+  document.getElementById("verApp").textContent=APP_VERSION;
 }
 
 function cerrarSesion(){
@@ -614,6 +655,16 @@ function renderItems(){
 
 // ══════════════════════════════════════════════
 //  GUARDAR PRÉSTAMO — via Apps Script (escritura)
+//
+//  Esta es la función que se dispara al tocar "Registrar préstamo
+//  completo" en la pestaña Préstamo. Junta al trabajador (TWK) y
+//  todos los ítems agregados (ITEMS), y se los manda a Code.gs
+//  (acción "guardarPrestamo") para que escriba las filas nuevas
+//  en Prestamos_Herramientas y Prestamos_Detalle.
+//
+//  Blindajes que tiene: ENVIANDO_PRESTAMO evita el doble toque,
+//  y "idemKey" (una clave única por intento) evita que un reintento
+//  de red duplique el registro — ver el mismo mecanismo en Code.gs.
 // ══════════════════════════════════════════════
 var ENVIANDO_PRESTAMO=false; // evita doble registro por doble toque o reintento de red
 function guardar(){
@@ -654,7 +705,19 @@ function guardar(){
 }
 
 // ══════════════════════════════════════════════
-//  DEVOLUCIÓN — lee préstamos desde Sheets
+//  DEVOLUCIÓN
+//
+//  cargarPA(cod,nom) — lee de Sheets qué herramientas tiene
+//  pendientes ese trabajador ahora mismo, y las muestra en pantalla.
+//  Se vuelve a llamar automáticamente después de cada devolución,
+//  para que la lista quede actualizada sin vaciarse (ver el bug
+//  que corregimos: antes se limpiaba la pantalla en vez de refrescar).
+//
+//  confirmarDev(id,items) — ⭐ es la que REALMENTE registra la
+//  devolución: manda a Code.gs (acción "cerrarPrestamo") cuáles
+//  ítems se devuelven. Si el trabajador se queda con algunos
+//  (devolución parcial), el préstamo sigue "Abierto"; si devuelve
+//  todo, pasa a "Cerrado".
 // ══════════════════════════════════════════════
 // Trabajador actualmente mostrado en la pantalla de Devolución (para refrescar tras confirmar)
 var TWD_COD="";

@@ -19,6 +19,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 .btn{width:100%;padding:11px;border:none;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;margin-bottom:7px}
 .b-blue{background:#2E75B6;color:#fff}.b-ok{background:#375623;color:#fff}
 .b-danger{background:#C00000;color:#fff}.b-warn{background:#F4B942;color:#333}
+.b-sec{background:#E5E5E5;color:#333}
 .b-sm{padding:5px 10px;font-size:11px;width:auto;margin:2px;border:none;border-radius:5px;cursor:pointer;font-weight:bold}
 .badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:bold}
 .bh{background:#D6E4F0;color:#1F3864}.bi{background:#E2EFDA;color:#375623}.bm{background:#FFF2CC;color:#7B5800}
@@ -126,6 +127,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <div class="tab"     onclick="goTab(1)">📥 Devolución</div>
   <div class="tab"     onclick="goTab(2)">📋 Historial</div>
   <div class="tab"     onclick="goTab(3)">📊 Reportes</div>
+  <div class="tab"     onclick="goTab(4)">📦 Inventario</div>
 </div>
 
 <!-- PRÉSTAMO -->
@@ -223,6 +225,17 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <div id="ri"></div>
 </div>
 
+<!-- INVENTARIO -->
+<div id="s4" class="scr">
+  <div class="card">
+    <div class="ctit">📦 Inventario</div>
+    <input type="text" id="invBuscar" placeholder="Buscar herramienta, insumo o material..." oninput="invFiltrar()">
+    <button class="btn b-ok" onclick="invNuevo()" style="width:100%">➕ Agregar ítem nuevo</button>
+  </div>
+  <div id="invLista"></div>
+  <div id="invForm"></div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
@@ -307,6 +320,7 @@ function goTab(n) {
   document.querySelectorAll(".tab").forEach(function(t,i){ t.classList.toggle("on",i===n); });
   document.querySelectorAll(".scr").forEach(function(s,i){ s.classList.toggle("on",i===n); });
   stopQR();
+  if(n===4 && INV_ITEMS.length===0) invCargar();
 }
 
 // ══════════════════════════════════════════════
@@ -1185,6 +1199,234 @@ function descargarPDF(){
 
   doc.save("Informe_GT01_"+fechaGen+"_"+horaGen+".pdf");
 }
+
+// ══════════════════════════════════════════════
+//  INVENTARIO — buscar, editar y agregar ítems del catálogo.
+//
+//  IMPORTANTE: estas columnas coinciden EXACTAMENTE con el Excel
+//  real de Joaquín (confirmado por captura, julio 2026):
+//
+//  Catalogo_Herramientas (14 columnas, A→N):
+//    A CodigoHerramienta  B Descripcion   C Categoria
+//    D Subcategoria       E Marca         F Especificaciones
+//    G CantidadTotal      H CantidadDisponible (en desuso, no se usa)
+//    I CantidadPrestada   (en desuso, no se usa)
+//    J Accesorios         K Contenedor    L Ubicacion
+//    M Estado             N Observaciones
+//
+//  Catalogo_Insumos (8 columnas, A→H):
+//    A CodigoInsumo   B DescripcionInsumo   C Categoria
+//    D Unidad         E StockActual         F StockMinimo
+//    G Ubicacion      H Observaciones
+//
+//  H e I de Herramientas (CantidadDisponible/CantidadPrestada) NO
+//  se leen ni se escriben desde aquí a propósito — quedaron con
+//  datos manuales inconsistentes. El tope de préstamos (pendiente,
+//  próxima etapa) se calculará en vivo contra CantidadTotal, no
+//  contra estos dos campos.
+// ══════════════════════════════════════════════
+
+var INV_ITEMS=[]; // lista combinada de ambos catálogos, cargada en memoria
+var INV_ESTADOS=["Bueno","Nuevo","Regular","Dañado","Pendiente de revisar","De baja","Otro"];
+
+// Carga ambos catálogos completos desde Sheets y arma una sola lista en memoria
+function invCargar(){
+  document.getElementById("invLista").innerHTML="<div class='loading'>🔄 Cargando inventario...</div>";
+  Promise.all([
+    sheetsGet("Catalogo_Herramientas!A2:N"),
+    sheetsGet("Catalogo_Insumos!A2:H")
+  ]).then(function(results){
+    var h=results[0].values||[];
+    var ins=results[1].values||[];
+    INV_ITEMS=[];
+
+    // Herramientas — una fila = un ítem, tal como está en la hoja real
+    h.forEach(function(r){
+      if(!r[0]) return; // fila sin código, se ignora
+      INV_ITEMS.push({
+        tipo:"Herramienta",
+        codigo:(r[0]||"").toString(), descripcion:(r[1]||"").toString(),
+        categoria:(r[2]||"").toString(), subcategoria:(r[3]||"").toString(),
+        marca:(r[4]||"").toString(), especificaciones:(r[5]||"").toString(),
+        cantidadTotal:(r[6]!==undefined&&r[6]!==""?r[6]:""),
+        accesorios:(r[9]||"").toString(), contenedor:(r[10]||"").toString(),
+        ubicacion:(r[11]||"").toString(), estado:(r[12]||"Pendiente de revisar").toString(),
+        observaciones:(r[13]||"").toString()
+      });
+    });
+
+    // Insumos/Materiales — misma hoja para ambos; se usa Categoria solo para
+    // mostrar el badge visual correcto, no cambia cómo se guarda el dato.
+    ins.forEach(function(r){
+      if(!r[0]) return;
+      var cat=(r[2]||"").toString();
+      var esConsumible = cat.toLowerCase().indexOf("insumo")>=0 || cat.toLowerCase().indexOf("consumib")>=0;
+      INV_ITEMS.push({
+        tipo: esConsumible ? "Insumo" : "Material",
+        codigo:(r[0]||"").toString(), descripcion:(r[1]||"").toString(),
+        categoria:cat, unidad:(r[3]||"und").toString(),
+        stockActual:(r[4]!==undefined&&r[4]!==""?r[4]:""),
+        stockMinimo:(r[5]!==undefined&&r[5]!==""?r[5]:""),
+        ubicacion:(r[6]||"").toString(), observaciones:(r[7]||"").toString()
+      });
+    });
+
+    invFiltrar();
+  }).catch(function(e){
+    document.getElementById("invLista").innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
+}
+
+// Filtra la lista en memoria por lo escrito en el buscador (código o descripción)
+function invFiltrar(){
+  var q=document.getElementById("invBuscar").value.toLowerCase().trim();
+  var res=INV_ITEMS.filter(function(it){
+    return !q || it.codigo.toLowerCase().indexOf(q)>=0 || it.descripcion.toLowerCase().indexOf(q)>=0;
+  });
+  var d=document.getElementById("invLista");
+  if(!res.length){ d.innerHTML="<div class='empty'><div class='ei'>📦</div><p>Sin resultados</p></div>"; return; }
+
+  d.innerHTML=res.map(function(it){
+    var i=INV_ITEMS.indexOf(it);
+    var bc=it.tipo==="Herramienta"?"bh":(it.tipo==="Material"?"bm":"bi");
+    if(it.tipo==="Herramienta"){
+      var deBaja = it.estado==="De baja";
+      var cant = it.cantidadTotal===""? "sin cantidad definida" : it.cantidadTotal+" total";
+      return "<div class='card' style='padding:10px;margin-bottom:8px;"+(deBaja?"opacity:.55":"")+"'>"+
+        "<div style='display:flex;justify-content:space-between;align-items:start'>"+
+        "<div><span class='badge "+bc+"'>"+it.tipo+"</span> <b>"+it.descripcion+"</b>"+
+        "<div style='font-size:11px;color:#888;margin-top:3px'>"+it.codigo+" · "+cant+(it.ubicacion?" · 📍 "+it.ubicacion:"")+"</div>"+
+        "<div style='font-size:11px;color:#888'>Estado: "+it.estado+(it.marca?" · "+it.marca:"")+"</div></div>"+
+        "<button class='btn b-blue' style='padding:6px 10px;font-size:11px' onclick='invEditar("+i+")'>✏️ Editar</button>"+
+        "</div></div>";
+    } else {
+      var bajoStock = it.stockActual!=="" && it.stockMinimo!=="" && Number(it.stockActual) < Number(it.stockMinimo);
+      return "<div class='card' style='padding:10px;margin-bottom:8px'>"+
+        "<div style='display:flex;justify-content:space-between;align-items:start'>"+
+        "<div><span class='badge "+bc+"'>"+it.tipo+"</span> <b>"+it.descripcion+"</b>"+
+        "<div style='font-size:11px;color:#888;margin-top:3px'>"+it.codigo+" · Stock: "+(it.stockActual===""?"—":it.stockActual)+" "+it.unidad+
+        (bajoStock?" <span style='color:#c0392b'>⚠️ bajo mínimo</span>":"")+(it.ubicacion?" · 📍 "+it.ubicacion:"")+"</div></div>"+
+        "<button class='btn b-blue' style='padding:6px 10px;font-size:11px' onclick='invEditar("+i+")'>✏️ Editar</button>"+
+        "</div></div>";
+    }
+  }).join("");
+}
+
+function invNuevo(){
+  invMostrarForm({
+    tipo:"Herramienta", codigo:"", descripcion:"", categoria:"", subcategoria:"", marca:"",
+    especificaciones:"", cantidadTotal:"", accesorios:"", contenedor:"", ubicacion:"",
+    estado:"Pendiente de revisar", observaciones:"", unidad:"und", stockActual:"", stockMinimo:""
+  }, false);
+}
+function invEditar(idx){ invMostrarForm(INV_ITEMS[idx], true); }
+
+// Arma el formulario de edición/creación, con campos distintos según el tipo
+function invMostrarForm(it, esEdicion){
+  var f=document.getElementById("invForm");
+  var esHerr = it.tipo==="Herramienta" || (!esEdicion && it.tipo==="Herramienta");
+
+  var camposHerramienta =
+    "<input type='text' id='ivCategoria' placeholder='Categoría' value=\""+esc(it.categoria||"")+"\">"+
+    "<input type='text' id='ivSubcategoria' placeholder='Subcategoría' value=\""+esc(it.subcategoria||"")+"\">"+
+    "<input type='text' id='ivMarca' placeholder='Marca' value=\""+esc(it.marca||"")+"\">"+
+    "<input type='text' id='ivEspecificaciones' placeholder='Especificaciones (ej. 20V, 1/2\")' value=\""+esc(it.especificaciones||"")+"\">"+
+    "<input type='number' id='ivCantidad' placeholder='Cantidad total' value=\""+esc((it.cantidadTotal!==undefined?it.cantidadTotal:"").toString())+"\">"+
+    "<input type='text' id='ivAccesorios' placeholder='Accesorios (ej. 1 cargador, 1 batería)' value=\""+esc(it.accesorios||"")+"\">"+
+    "<input type='text' id='ivContenedor' placeholder='Contenedor (Suelto, Caja, etc.)' value=\""+esc(it.contenedor||"")+"\">"+
+    "<select id='ivEstado'>"+INV_ESTADOS.map(function(e){return "<option value='"+e+"'"+(it.estado===e?" selected":"")+">"+e+"</option>";}).join("")+"</select>"+
+    "<input type='text' id='ivEstadoOtro' placeholder='Detalle del estado (si elegiste \"Otro\")' style='display:"+(it.estado==="Otro"?"block":"none")+"' value=\""+(it.estado==="Otro"?esc(it.observaciones||""):"")+"\">";
+
+  var camposInsumo =
+    "<input type='text' id='ivCategoriaIns' placeholder='Categoría (Insumo, Consumible...)' value=\""+esc(it.categoria||"")+"\">"+
+    "<input type='text' id='ivUnidad' placeholder='Unidad (und, rollo, saco...)' value=\""+esc(it.unidad||"und")+"\">"+
+    "<input type='number' id='ivStockActual' placeholder='Stock actual' value=\""+esc((it.stockActual!==undefined?it.stockActual:"").toString())+"\">"+
+    "<input type='number' id='ivStockMinimo' placeholder='Stock mínimo' value=\""+esc((it.stockMinimo!==undefined?it.stockMinimo:"").toString())+"\">";
+
+  f.innerHTML=
+    "<div class='card'>"+
+    "<div class='ctit'>"+(esEdicion?"✏️ Editar ítem":"➕ Nuevo ítem")+"</div>"+
+    "<select id='ivTipo' onchange='invToggleTipoCampos()' "+(esEdicion?"disabled":"")+">"+
+      "<option value='Herramienta'"+(it.tipo==="Herramienta"?" selected":"")+">Herramienta</option>"+
+      "<option value='Insumo'"+(it.tipo==="Insumo"?" selected":"")+">Insumo</option>"+
+      "<option value='Material'"+(it.tipo==="Material"?" selected":"")+">Material</option>"+
+    "</select>"+
+    "<input type='text' id='ivCodigo' placeholder='Código' value=\""+esc(it.codigo)+"\">"+
+    "<input type='text' id='ivDescripcion' placeholder='Descripción' value=\""+esc(it.descripcion)+"\">"+
+    "<div id='ivCamposHerramienta' style='display:"+(it.tipo==="Herramienta"?"block":"none")+"'>"+camposHerramienta+"</div>"+
+    "<div id='ivCamposInsumo' style='display:"+(it.tipo!=="Herramienta"?"block":"none")+"'>"+camposInsumo+"</div>"+
+    "<input type='text' id='ivUbicacion' placeholder='Ubicación en bodega' value=\""+esc(it.ubicacion||"")+"\">"+
+    "<input type='text' id='ivObservaciones' placeholder='Observaciones' value=\""+esc(it.tipo==="Herramienta"&&it.estado==="Otro"?"":(it.observaciones||""))+"\">"+
+    "<div id='ivMsg'></div>"+
+    "<div style='display:flex;gap:8px;margin-top:6px'>"+
+      "<button class='btn b-ok' style='flex:1' onclick='invGuardar("+(esEdicion?"\""+esc(it.codigo)+"\"":"null")+")'>💾 Guardar</button>"+
+      "<button class='btn b-sec' style='flex:0' onclick='document.getElementById(\"invForm\").innerHTML=\"\"'>Cancelar</button>"+
+    "</div></div>";
+
+  // Muestra/oculta el campo libre de "Otro" según el estado elegido
+  var selEstado=document.getElementById("ivEstado");
+  if(selEstado) selEstado.addEventListener("change",function(){
+    document.getElementById("ivEstadoOtro").style.display = (this.value==="Otro")?"block":"none";
+  });
+
+  f.scrollIntoView({behavior:"smooth"});
+}
+
+// Alterna qué grupo de campos se ve según el tipo elegido (solo al crear un ítem nuevo)
+function invToggleTipoCampos(){
+  var tipo=document.getElementById("ivTipo").value;
+  document.getElementById("ivCamposHerramienta").style.display = (tipo==="Herramienta")?"block":"none";
+  document.getElementById("ivCamposInsumo").style.display = (tipo==="Herramienta")?"none":"block";
+}
+
+// Junta los datos del formulario según el tipo, y los manda a guardar al backend
+function invGuardar(codigoOriginal){
+  var msg=document.getElementById("ivMsg");
+  msg.innerHTML="";
+  var tipo=document.getElementById("ivTipo").value;
+  var codigo=document.getElementById("ivCodigo").value.trim();
+  var descripcion=document.getElementById("ivDescripcion").value.trim();
+  var ubicacion=document.getElementById("ivUbicacion").value.trim();
+  var observacionesInput=document.getElementById("ivObservaciones").value.trim();
+
+  if(!codigo||!descripcion){
+    msg.innerHTML="<div class='msg-err'>Código y descripción son obligatorios.</div>";
+    return;
+  }
+
+  var data={ tipo:tipo, codigo:codigo, codigoOriginal:codigoOriginal||"", descripcion:descripcion, ubicacion:ubicacion };
+
+  if(tipo==="Herramienta"){
+    var estadoSel=document.getElementById("ivEstado").value;
+    var estadoOtro=document.getElementById("ivEstadoOtro")?document.getElementById("ivEstadoOtro").value.trim():"";
+    data.categoria=document.getElementById("ivCategoria").value.trim();
+    data.subcategoria=document.getElementById("ivSubcategoria").value.trim();
+    data.marca=document.getElementById("ivMarca").value.trim();
+    data.especificaciones=document.getElementById("ivEspecificaciones").value.trim();
+    data.cantidadTotal=document.getElementById("ivCantidad").value.trim();
+    data.accesorios=document.getElementById("ivAccesorios").value.trim();
+    data.contenedor=document.getElementById("ivContenedor").value.trim();
+    data.estado=estadoSel;
+    // Si el estado es "Otro", el detalle escrito se guarda en Observaciones junto a lo que ya había
+    data.observaciones = (estadoSel==="Otro" && estadoOtro) ? (estadoOtro+(observacionesInput?" · "+observacionesInput:"")) : observacionesInput;
+  } else {
+    data.categoria=document.getElementById("ivCategoriaIns").value.trim();
+    data.unidad=document.getElementById("ivUnidad").value.trim();
+    data.stockActual=document.getElementById("ivStockActual").value.trim();
+    data.stockMinimo=document.getElementById("ivStockMinimo").value.trim();
+    data.observaciones=observacionesInput;
+  }
+
+  gasPost("guardarItemCatalogo",data).then(function(r){
+    if(r.error){ msg.innerHTML="<div class='msg-err'>❌ "+r.error+"</div>"; return; }
+    document.getElementById("invForm").innerHTML="<div class='msg-ok'>✅ Guardado correctamente.</div>";
+    setTimeout(function(){document.getElementById("invForm").innerHTML="";},1500);
+    invCargar();
+  }).catch(function(e){
+    msg.innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
+}
+
 
 function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
 </script>

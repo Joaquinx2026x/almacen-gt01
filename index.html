@@ -244,14 +244,14 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 // ═══════════════════════════════════════════════════════════
 // ALMACÉN GT01 — Frontend (index.html)
 //
-// VERSIÓN ACTUAL: 1.5.0   (14/07/2026)
+// VERSIÓN ACTUAL: 1.6.0   (14/07/2026)
 // Debe coincidir siempre con la versión de Code.gs — son un solo
 // sistema, aunque vivan en dos archivos distintos.
 //
 // Ver el historial completo de versiones en el comentario de
 // encabezado de Code.gs (para no repetirlo dos veces).
 // ═══════════════════════════════════════════════════════════
-var APP_VERSION = "1.5.0";
+var APP_VERSION = "1.6.0";
 
 // ═══════════════════════════════════════════════════════════
 // ÍNDICE — mapa rápido de este archivo, para ubicarte sin tener
@@ -1297,11 +1297,28 @@ function invCargar(){
   document.getElementById("invLista").innerHTML="<div class='loading'>🔄 Cargando inventario...</div>";
   Promise.all([
     sheetsGet("Catalogo_Herramientas!A2:N"),
-    sheetsGet("Catalogo_Insumos!A2:H")
+    sheetsGet("Catalogo_Insumos!A2:H"),
+    sheetsGet("Movimientos_Insumos!A2:M")
   ]).then(function(results){
     var h=results[0].values||[];
     var ins=results[1].values||[];
+    var movs=results[2].values||[];
     INV_ITEMS=[];
+
+    // Calcula el stock real de cada insumo sumando Entradas y restando
+    // Salidas de Movimientos_Insumos. Si un código no tiene NINGÚN
+    // movimiento todavía, queda como "null" — en ese caso se sigue
+    // mostrando el StockActual manual viejo, hasta que se le haga la
+    // carga inicial (ver botón "Registrar entrada").
+    var stockCalc={};
+    movs.forEach(function(m){
+      var cod=(m[3]||"").toString().trim();
+      if(!cod) return;
+      var tipo=(m[2]||"").toString().trim().toLowerCase();
+      var cant=Number(m[5])||0;
+      if(stockCalc[cod]===undefined) stockCalc[cod]=0;
+      stockCalc[cod] += (tipo==="entrada") ? cant : -cant;
+    });
 
     // Herramientas — una fila = un ítem, tal como está en la hoja real
     h.forEach(function(r){
@@ -1322,15 +1339,17 @@ function invCargar(){
     // mostrar el badge visual correcto, no cambia cómo se guarda el dato.
     ins.forEach(function(r){
       if(!r[0]) return;
+      var cod=(r[0]||"").toString();
       var cat=(r[2]||"").toString();
       var esConsumible = cat.toLowerCase().indexOf("insumo")>=0 || cat.toLowerCase().indexOf("consumib")>=0;
       INV_ITEMS.push({
         tipo: esConsumible ? "Insumo" : "Material",
-        codigo:(r[0]||"").toString(), descripcion:(r[1]||"").toString(),
+        codigo:cod, descripcion:(r[1]||"").toString(),
         categoria:cat, unidad:(r[3]||"und").toString(),
         stockActual:(r[4]!==undefined&&r[4]!==""?r[4]:""),
         stockMinimo:(r[5]!==undefined&&r[5]!==""?r[5]:""),
-        ubicacion:(r[6]||"").toString(), observaciones:(r[7]||"").toString()
+        ubicacion:(r[6]||"").toString(), observaciones:(r[7]||"").toString(),
+        stockCalculado: stockCalc[cod]!==undefined ? stockCalc[cod] : null
       });
     });
 
@@ -1363,14 +1382,23 @@ function invFiltrar(){
         "<button class='btn b-blue' style='padding:6px 10px;font-size:11px' onclick='invEditar("+i+")'>✏️ Editar</button>"+
         "</div></div>";
     } else {
-      var bajoStock = it.stockActual!=="" && it.stockMinimo!=="" && Number(it.stockActual) < Number(it.stockMinimo);
+      // Si ya tiene movimientos registrados, se muestra el stock calculado
+      // (Entradas - Salidas), que es el número confiable. Si todavía no
+      // tiene ningún movimiento, se muestra el StockActual manual viejo,
+      // con un aviso de que está pendiente de iniciar el conteo real.
+      var tieneCalculo = it.stockCalculado!==null && it.stockCalculado!==undefined;
+      var stockMostrar = tieneCalculo ? it.stockCalculado : it.stockActual;
+      var etiquetaStock = tieneCalculo ? "Stock (calculado)" : "Stock (manual, sin movimientos aún)";
+      var bajoStock = stockMostrar!=="" && it.stockMinimo!=="" && Number(stockMostrar) < Number(it.stockMinimo);
       return "<div class='card' style='padding:10px;margin-bottom:8px'>"+
         "<div style='display:flex;justify-content:space-between;align-items:start'>"+
         "<div><span class='badge "+bc+"'>"+it.tipo+"</span> <b>"+it.descripcion+"</b>"+
-        "<div style='font-size:11px;color:#888;margin-top:3px'>"+it.codigo+" · Stock: "+(it.stockActual===""?"—":it.stockActual)+" "+it.unidad+
+        "<div style='font-size:11px;color:#888;margin-top:3px'>"+it.codigo+" · "+etiquetaStock+": "+(stockMostrar===""?"—":stockMostrar)+" "+it.unidad+
         (bajoStock?" <span style='color:#c0392b'>⚠️ bajo mínimo</span>":"")+(it.ubicacion?" · 📍 "+it.ubicacion:"")+"</div></div>"+
+        "<div style='display:flex;flex-direction:column;gap:4px'>"+
         "<button class='btn b-blue' style='padding:6px 10px;font-size:11px' onclick='invEditar("+i+")'>✏️ Editar</button>"+
-        "</div></div>";
+        "<button class='btn b-ok' style='padding:6px 10px;font-size:11px' onclick='invMostrarEntrada("+i+")'>📥 Entrada</button>"+
+        "</div></div></div>";
     }
   }).join("");
 }
@@ -1490,6 +1518,68 @@ function invGuardar(codigoOriginal){
   });
 }
 
+
+
+// ── Registrar ENTRADA de stock (compra o carga inicial) ──
+// Se usa una por una, a propósito — cada entrada queda como su propio
+// registro en Movimientos_Insumos, con su motivo, para mantener un
+// historial honesto (ver conversación sobre la carga inicial de bridas).
+function invMostrarEntrada(idx){
+  var it=INV_ITEMS[idx];
+  var f=document.getElementById("invForm");
+  f.innerHTML=
+    "<div class='card'>"+
+    "<div class='ctit'>📥 Registrar entrada — "+esc(it.descripcion)+"</div>"+
+    "<select id='ieTipo'>"+
+      "<option value='Entrada'>Entrada (compra / stock inicial)</option>"+
+      "<option value='Salida'>Salida (ajuste manual)</option>"+
+    "</select>"+
+    "<input type='number' id='ieCantidad' placeholder='Cantidad'>"+
+    "<input type='text' id='ieMotivo' placeholder='Motivo (ej. Inventario inicial, Compra, Ajuste)'>"+
+    "<input type='text' id='ieFactura' placeholder='N° de factura (opcional)'>"+
+    "<input type='text' id='ieObs' placeholder='Observaciones (opcional)'>"+
+    "<div id='ieMsg'></div>"+
+    "<div style='display:flex;gap:8px;margin-top:6px'>"+
+      "<button class='btn b-ok' style='flex:1' onclick='invGuardarEntrada("+idx+")'>💾 Registrar</button>"+
+      "<button class='btn b-sec' style='flex:0' onclick='document.getElementById(\"invForm\").innerHTML=\"\"'>Cancelar</button>"+
+    "</div></div>";
+  f.scrollIntoView({behavior:"smooth"});
+}
+
+function invGuardarEntrada(idx){
+  var it=INV_ITEMS[idx];
+  var msg=document.getElementById("ieMsg");
+  msg.innerHTML="";
+  var cantidad=document.getElementById("ieCantidad").value.trim();
+  var motivo=document.getElementById("ieMotivo").value.trim();
+  if(!cantidad || Number(cantidad)<=0){
+    msg.innerHTML="<div class='msg-err'>La cantidad es obligatoria y debe ser mayor a 0.</div>";
+    return;
+  }
+  if(!motivo){
+    msg.innerHTML="<div class='msg-err'>El motivo es obligatorio (ej. \"Inventario inicial\", \"Compra\").</div>";
+    return;
+  }
+  var data={
+    codigoInsumo: it.codigo,
+    descripcionInsumo: it.descripcion,
+    cantidad: cantidad,
+    unidad: it.unidad,
+    tipoMovimiento: document.getElementById("ieTipo").value,
+    motivo: motivo,
+    numeroFactura: document.getElementById("ieFactura").value.trim(),
+    registradoPor: (SESION&&SESION.nombre)||"Almacenista",
+    observaciones: document.getElementById("ieObs").value.trim()
+  };
+  gasPost("registrarMovimientoInsumo",data).then(function(r){
+    if(r.error){ msg.innerHTML="<div class='msg-err'>❌ "+r.error+"</div>"; return; }
+    document.getElementById("invForm").innerHTML="<div class='msg-ok'>✅ Movimiento registrado ("+r.idMovimiento+").</div>";
+    setTimeout(function(){document.getElementById("invForm").innerHTML="";},1800);
+    invCargar();
+  }).catch(function(e){
+    msg.innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
+}
 
 function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
 </script>

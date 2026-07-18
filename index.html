@@ -10,6 +10,8 @@ body{font-family:Arial,sans-serif;background:#f0f4f8;color:#333;font-size:14px}
 .hdr{background:#1F3864;color:#fff;padding:12px 14px}
 .hdr h1{font-size:16px}.hdr span{font-size:11px;color:#A8C8E8}
 .tabs{display:flex;background:#2E75B6}
+.menu-item{padding:11px 8px;font-size:14px;font-weight:bold;color:#1F3864;cursor:pointer;border-radius:6px}
+.menu-item:active{background:#EBF3FB}
 .tab{flex:1;padding:11px 4px;text-align:center;color:#A8C8E8;font-size:12px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
 .tab.on{color:#fff;border-bottom-color:#F4B942;font-weight:bold}
 .scr{display:none;padding:10px}.scr.on{display:block}
@@ -127,7 +129,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 </div>
 <!-- Menú "más" — para utilidades administrativas que no ameritan pestaña propia -->
 <div id="menuMas" style="display:none;background:#fff;border-bottom:1px solid #ddd;padding:8px 14px">
-  <div class="tab" style="display:block;margin-bottom:4px" onclick="abrirHorometro()">⏱ Horómetro de maquinaria</div>
+<div class="menu-item" onclick="abrirHorometro()">⏱ Horómetro de maquinaria</div>
 </div>
 <div class="hdr"><h1>🏗 Almacén GT01</h1><span>Coatepeque · SOLTECING</span></div>
 <div class="tabs">
@@ -265,7 +267,8 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
     <div class="card">
       <select id="horMaquina"><option value="">Selecciona la máquina...</option></select>
       <input type="date" id="horFecha">
-      <select id="horOperador"><option value="">Selecciona el operador...</option></select>
+    <input type="text" id="horOperador" placeholder="Nombre del operador..." autocomplete="off" oninput="horBuscarOperador(this.value)">
+<div id="horOperadorSug" class="sug"></div>
       <input type="number" id="horInicio" placeholder="Orómetro de inicio" step="0.1">
       <input type="number" id="horFin" placeholder="Orómetro de fin" step="0.1">
       <div id="horPreview" style="font-size:12px;color:#1F3864;margin:6px 0;min-height:18px"></div>
@@ -1678,13 +1681,12 @@ function horGoTab(n){
 
 // Carga el catálogo de máquinas (Maquinaria_GT01) y de trabajadores (Personal_GT01,
 // reutilizado — ya lo usa el resto de la app) para los selectores del formulario.
+// Carga el catálogo de máquinas (Maquinaria_GT01) para el selector del formulario.
+// Los operadores YA NO se cargan de Personal_GT01 (son personal externo, no
+// trabajadores de SOLTECING) — ver HOR_OPERADORES_PROVISIONAL más abajo.
 function horCargarCatalogos(){
-  Promise.all([
-    sheetsGet("Maquinaria_GT01!A2:C"),
-    sheetsGet("Personal_GT01!A2:B")
-  ]).then(function(results){
-    var maq=results[0].values||[];
-    var pers=results[1].values||[];
+  sheetsGet("Maquinaria_GT01!A2:C").then(function(resp){
+    var maq=resp.values||[];
 
     HOR_MAQUINAS = maq.filter(function(r){return r[0];}).map(function(r){
       return { codigo:(r[0]||"").toString(), nombre:(r[1]||"").toString(), estado:(r[2]||"Activa").toString() };
@@ -1696,19 +1698,37 @@ function horCargarCatalogos(){
     document.getElementById("horMaquina").innerHTML = optsMaquina;
     document.getElementById("horMaquinaCorte").innerHTML = optsMaquina;
 
-    var optsOperador = "<option value=''>Selecciona el operador...</option>" +
-      pers.filter(function(r){return r[1];})
-        .map(function(r){return "<option value='"+esc((r[1]||"").toString())+"'>"+esc((r[1]||"").toString())+"</option>";}).join("");
-    document.getElementById("horOperador").innerHTML = optsOperador;
-
-    // Fecha de hoy por defecto
     var hoy=new Date();
     document.getElementById("horFecha").value = hoy.getFullYear()+"-"+String(hoy.getMonth()+1).padStart(2,"0")+"-"+String(hoy.getDate()).padStart(2,"0");
   }).catch(function(e){
-    document.getElementById("horMsg").innerHTML="<div class='msg-err'>❌ No se pudo cargar el catálogo de máquinas/operadores.</div>";
+    document.getElementById("horMsg").innerHTML="<div class='msg-err'>❌ No se pudo cargar el catálogo de máquinas.</div>";
   });
 }
 
+// ── Operadores de maquinaria — lista PROVISIONAL, escrita directo aquí ──
+// Son personas externas a SOLTECING (no están en Personal_GT01). Para
+// agregar un operador nuevo, sumá su nombre a este arreglo. El campo
+// también acepta escribir un nombre que NO esté en esta lista.
+var HOR_OPERADORES_PROVISIONAL = ["Anderson Reyes", "Marlon Alexander Orozco Felipe"];
+
+function horBuscarOperador(val){
+  var box=document.getElementById("horOperadorSug");
+  var q=val.toLowerCase().trim();
+  if(!q){ box.innerHTML=""; box.style.display="none"; return; }
+  var coincidencias=HOR_OPERADORES_PROVISIONAL.filter(function(n){
+    return n.toLowerCase().indexOf(q)>=0;
+  });
+  if(!coincidencias.length){ box.innerHTML=""; box.style.display="none"; return; }
+  box.innerHTML=coincidencias.map(function(n){
+    return "<div class='sug-item' onclick='horSelOperador(\""+esc(n)+"\")'><div class='sug-nom'>"+esc(n)+"</div></div>";
+  }).join("");
+  box.style.display="block";
+}
+function horSelOperador(nombre){
+  document.getElementById("horOperador").value=nombre;
+  document.getElementById("horOperadorSug").innerHTML="";
+  document.getElementById("horOperadorSug").style.display="none";
+}
 // Vista previa en vivo: se recalcula cada vez que cambian los orómetros,
 // para que Joaquín vea "horas trabajadas" vs. "horas a pagar" ANTES de guardar
 // (la misma regla del mínimo de 5 horas que aplica Code.gs al guardar).

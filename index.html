@@ -265,7 +265,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <!-- Sub-pantalla: registrar lectura diaria -->
   <div id="horScr0" class="hscr on">
     <div class="card">
-      <select id="horMaquina"><option value="">Selecciona la máquina...</option></select>
+   <select id="horMaquina" onchange="horAutocompletarOperador()"><option value="">Selecciona la máquina...</option></select>
       <input type="date" id="horFecha">
     <input type="text" id="horOperador" placeholder="Nombre del operador..." autocomplete="off" oninput="horBuscarOperador(this.value)">
 <div id="horOperadorSug" class="sug"></div>
@@ -281,11 +281,16 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <!-- Sub-pantalla: corte semanal + exportar PDF -->
   <div id="horScr1" class="hscr">
     <div class="card">
-      <select id="horMaquinaCorte"><option value="">Selecciona la máquina...</option></select>
-      <div class="fr-row">
-        <button class="fr-btn on" id="hc0" onclick="horRangoRapido('semana')">📆 Esta semana (lun-sáb)</button>
-        <button class="fr-btn" id="hc1" onclick="horRangoRapido('pasada')">⏮️ Semana pasada</button>
-      </div>
+    <select id="horMaquinaCorte"><option value="">Selecciona la máquina...</option></select>
+<div class="fr-row">
+  <button class="fr-btn on" id="hc0" onclick="horRangoRapido('semana')">📆 Esta semana (lun-sáb)</button>
+  <button class="fr-btn" id="hc1" onclick="horRangoRapido('pasada')">⏮️ Semana pasada</button>
+  <button class="fr-btn" id="hc2" onclick="horRangoRapido('personalizado')">✏️ Elegir fechas</button>
+</div>
+<div id="horRangoManual" style="display:none;margin-top:8px">
+  <input type="date" id="horFechaDesde" style="margin-bottom:6px">
+  <input type="date" id="horFechaHasta">
+</div>
       <button class="btn b-blue" style="width:100%;margin-top:8px" onclick="horGenerarCorte()">📄 Generar corte</button>
     </div>
     <div id="horCorteResultado"></div>
@@ -1696,7 +1701,8 @@ function horCargarCatalogos(){
       HOR_MAQUINAS.filter(function(m){return m.estado!=="Inactiva";})
         .map(function(m){return "<option value='"+esc(m.codigo)+"'>"+esc(m.nombre)+"</option>";}).join("");
     document.getElementById("horMaquina").innerHTML = optsMaquina;
-    document.getElementById("horMaquinaCorte").innerHTML = optsMaquina;
+    document.getElementById("horMaquinaCorte").innerHTML =
+      "<option value='TODAS'>— Todas las máquinas —</option>" + optsMaquina.replace("<option value=''>Selecciona la máquina...</option>","");
 
     var hoy=new Date();
     document.getElementById("horFecha").value = hoy.getFullYear()+"-"+String(hoy.getMonth()+1).padStart(2,"0")+"-"+String(hoy.getDate()).padStart(2,"0");
@@ -1704,7 +1710,6 @@ function horCargarCatalogos(){
     document.getElementById("horMsg").innerHTML="<div class='msg-err'>❌ No se pudo cargar el catálogo de máquinas.</div>";
   });
 }
-
 // ── Operadores de maquinaria — lista PROVISIONAL, escrita directo aquí ──
 // Son personas externas a SOLTECING (no están en Personal_GT01). Para
 // agregar un operador nuevo, sumá su nombre a este arreglo. El campo
@@ -1724,10 +1729,15 @@ function horBuscarOperador(val){
   }).join("");
   box.style.display="block";
 }
-function horSelOperador(nombre){
-  document.getElementById("horOperador").value=nombre;
-  document.getElementById("horOperadorSug").innerHTML="";
-  document.getElementById("horOperadorSug").style.display="none";
+function horAutocompletarOperador(){
+  var maquinaCod=document.getElementById("horMaquina").value;
+  if(!maquinaCod) return;
+  var recordado=localStorage.getItem("gt01_ultimo_operador_"+maquinaCod);
+  if(recordado) document.getElementById("horOperador").value=recordado;
+}
+function horRecordarOperador(maquinaCod, nombreOperador){
+  if(!maquinaCod || !nombreOperador) return;
+  localStorage.setItem("gt01_ultimo_operador_"+maquinaCod, nombreOperador);
 }
 // Vista previa en vivo: se recalcula cada vez que cambian los orómetros,
 // para que Joaquín vea "horas trabajadas" vs. "horas a pagar" ANTES de guardar
@@ -1775,7 +1785,8 @@ function horGuardar(){
     observaciones: obs,
     registradoPor: (SESION&&SESION.nombre)||"Almacenista"
   }).then(function(r){
-    if(r.error){ msg.innerHTML="<div class='msg-err'>❌ "+r.error+"</div>"; return; }
+  if(r.error){ msg.innerHTML="<div class='msg-err'>❌ "+r.error+"</div>"; return; }
+    horRecordarOperador(maquinaCod, operador);
     msg.innerHTML="<div class='msg-ok'>✅ Registrado — "+r.horasTrabajadas+" h trabajadas, "+r.horasAPagar+" h a pagar.</div>";
     document.getElementById("horInicio").value="";
     document.getElementById("horFin").value="";
@@ -1791,7 +1802,15 @@ var HOR_RANGO_DESDE=null, HOR_RANGO_HASTA=null;
 function horRangoRapido(tipo){
   document.getElementById("hc0").classList.toggle("on", tipo==="semana");
   document.getElementById("hc1").classList.toggle("on", tipo==="pasada");
+  document.getElementById("hc2").classList.toggle("on", tipo==="personalizado");
+  document.getElementById("horRangoManual").style.display = (tipo==="personalizado") ? "block" : "none";
+
   var hoy=new Date();
+  if(tipo==="personalizado"){
+    document.getElementById("horFechaDesde").value = fechaAInput(hoy);
+    document.getElementById("horFechaHasta").value = fechaAInput(hoy);
+    return;
+  }
   var diaSemana=hoy.getDay(); // 0=domingo, 1=lunes...
   // Retrocede hasta el lunes de la semana actual
   var diasDesdeLunes = (diaSemana===0) ? 6 : diaSemana-1;
@@ -1808,38 +1827,63 @@ horRangoRapido("semana"); // rango por defecto
 function horGenerarCorte(){
   var maquinaCod=document.getElementById("horMaquinaCorte").value;
   var d=document.getElementById("horCorteResultado");
-  if(!maquinaCod){ d.innerHTML="<div class='msg-err'>Selecciona una máquina.</div>"; return; }
+  if(!maquinaCod){ d.innerHTML="<div class='msg-err'>Selecciona una máquina (o \"Todas las máquinas\").</div>"; return; }
+
+  var esPersonalizado=document.getElementById("hc2").classList.contains("on");
+  if(esPersonalizado){
+    var vd=document.getElementById("horFechaDesde").value;
+    var vh=document.getElementById("horFechaHasta").value;
+    if(!vd||!vh){ d.innerHTML="<div class='msg-err'>Selecciona ambas fechas.</div>"; return; }
+    var pd=vd.split("-"), ph=vh.split("-");
+    HOR_RANGO_DESDE=new Date(parseInt(pd[0]),parseInt(pd[1])-1,parseInt(pd[2]));
+    HOR_RANGO_HASTA=new Date(parseInt(ph[0]),parseInt(ph[1])-1,parseInt(ph[2]));
+  }
+  if(HOR_RANGO_DESDE>HOR_RANGO_HASTA){ d.innerHTML="<div class='msg-err'>La fecha 'Desde' no puede ser mayor que 'Hasta'.</div>"; return; }
+
   d.innerHTML="<div class='loading'>🔄 Generando corte...</div>";
 
   sheetsGet("Horometro_Registros!A2:K").then(function(resp){
     var rows=resp.values||[];
-    var registros=rows.filter(function(r){
-      if(!r[0]||r[2]!==maquinaCod) return false;
-      var fp=parseFechaDMY((r[1]||"").toString());
-      return fp && fp>=HOR_RANGO_DESDE && fp<=HOR_RANGO_HASTA;
-    }).map(function(r){
-      return { fecha:(r[1]||"").toString(), inicio:r[4], fin:r[5], trabajadas:r[6], aPagar:r[7], operador:(r[8]||"").toString() };
+    var todasMaquinas = (maquinaCod==="TODAS");
+
+    var maquinasAMostrar = todasMaquinas
+      ? HOR_MAQUINAS.filter(function(m){return m.estado!=="Inactiva";})
+      : HOR_MAQUINAS.filter(function(m){return m.codigo===maquinaCod;});
+
+    var grupos = maquinasAMostrar.map(function(m){
+      var registros = rows.filter(function(r){
+        if(!r[0]||r[2]!==m.codigo) return false;
+        var fp=parseFechaDMY((r[1]||"").toString());
+        return fp && fp>=HOR_RANGO_DESDE && fp<=HOR_RANGO_HASTA;
+      }).map(function(r){
+        return { fecha:(r[1]||"").toString(), inicio:r[4], fin:r[5], trabajadas:r[6], aPagar:r[7], operador:(r[8]||"").toString() };
+      });
+      var totalPagar = registros.reduce(function(s,r){return s+(Number(r.aPagar)||0);},0);
+      return { maquina:m.nombre, registros:registros, totalPagar:totalPagar };
     });
 
-    var maquinaObj=HOR_MAQUINAS.find(function(m){return m.codigo===maquinaCod;});
-    var totalPagar = registros.reduce(function(s,r){return s+(Number(r.aPagar)||0);},0);
-
     var rangoTxt = fechaLegible(HOR_RANGO_DESDE)+" al "+fechaLegible(HOR_RANGO_HASTA);
-    var html="<div class='card'><div class='rep-meta'>📅 "+rangoTxt+" · "+(maquinaObj?maquinaObj.nombre:maquinaCod)+"</div>";
-    if(!registros.length){
-      html+="<div class='empty'><div class='ei'>📭</div><p>Sin registros en este rango</p></div>";
-    } else {
-      html+="<table class='rep-tabla'><tr><th>Fecha</th><th>Inicio</th><th>Fin</th><th>Trabajadas</th><th>A pagar</th><th>Operador</th></tr>"+
-        registros.map(function(r){
-          return "<tr><td>"+r.fecha+"</td><td>"+r.inicio+"</td><td>"+r.fin+"</td><td>"+r.trabajadas+"</td><td><b>"+r.aPagar+"</b></td><td>"+r.operador+"</td></tr>";
-        }).join("")+
-        "<tr style='font-weight:bold;background:#EBF3FB'><td colspan='4'>Total a pagar</td><td>"+totalPagar+"</td><td></td></tr>"+
-        "</table>";
-    }
+    var html="<div class='card'><div class='rep-meta'>📅 "+rangoTxt+(todasMaquinas?" · Todas las máquinas":" · "+grupos[0].maquina)+"</div>";
+
+    grupos.forEach(function(g){
+      html+="<div class='rep-sec'><div class='rep-tit'>🚜 "+g.maquina+"</div>";
+      if(!g.registros.length){
+        html+="<div class='empty'><div class='ei'>📭</div><p>Sin registros en este rango</p></div>";
+      } else {
+        html+="<table class='rep-tabla'><tr><th>Fecha</th><th>Inicio</th><th>Fin</th><th>Trabajadas</th><th>A pagar</th><th>Operador</th></tr>"+
+          g.registros.map(function(r){
+            return "<tr><td>"+r.fecha+"</td><td>"+r.inicio+"</td><td>"+r.fin+"</td><td>"+r.trabajadas+"</td><td><b>"+r.aPagar+"</b></td><td>"+r.operador+"</td></tr>";
+          }).join("")+
+          "<tr style='font-weight:bold;background:#EBF3FB'><td colspan='4'>Total a pagar</td><td>"+g.totalPagar+"</td><td></td></tr>"+
+          "</table>";
+      }
+      html+="</div>";
+    });
+
     html+="<button class='btn b-ok' style='width:100%;margin-top:10px' onclick='horDescargarPDF()'>📄 Descargar PDF</button></div>";
     d.innerHTML=html;
 
-    HOR_CORTE_ACTUAL={registros:registros, totalPagar:totalPagar, maquina:maquinaObj?maquinaObj.nombre:maquinaCod, rangoTxt:rangoTxt};
+    HOR_CORTE_ACTUAL={grupos:grupos, rangoTxt:rangoTxt, todasMaquinas:todasMaquinas};
   }).catch(function(e){
     d.innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
   });
@@ -1850,27 +1894,36 @@ function horDescargarPDF(){
   if(!HOR_CORTE_ACTUAL || !window.jspdf){ alert("Genera el corte primero."); return; }
   var c=HOR_CORTE_ACTUAL;
   var doc=new window.jspdf.jsPDF();
+
   doc.setFontSize(14);
-  doc.text("Corte de horómetro — "+c.maquina,14,15);
+  doc.text(c.todasMaquinas ? "Corte de horómetro — Todas las máquinas" : "Corte de horómetro — "+c.grupos[0].maquina,14,15);
   doc.setFontSize(9);
   doc.setTextColor(100);
   doc.text("Periodo: "+c.rangoTxt+"   ·   Generado: "+new Date().toLocaleString("es-GT"),14,21);
 
-  doc.autoTable({
-    startY:28,
-    head:[["Fecha","Inicio","Fin","Trabajadas","A pagar","Operador"]],
-    body:c.registros.length? c.registros.map(function(r){
-      return[r.fecha,String(r.inicio),String(r.fin),String(r.trabajadas),String(r.aPagar),r.operador];
-    }):[["Sin registros en este periodo","","","","",""]],
-    foot:[["","","","Total a pagar",String(c.totalPagar),""]],
-    styles:{fontSize:9},headStyles:{fillColor:[31,56,100]},footStyles:{fillColor:[235,243,251],textColor:[20,20,20]},margin:{left:14,right:14}
+  var y=28;
+  c.grupos.forEach(function(g,i){
+    if(i>0 && y>250){ doc.addPage(); y=20; }
+    doc.setFontSize(11);
+    doc.setTextColor(20,20,20);
+    doc.text(g.maquina,14,y);
+    doc.autoTable({
+      startY:y+3,
+      head:[["Fecha","Inicio","Fin","Trabajadas","A pagar","Operador"]],
+      body:g.registros.length? g.registros.map(function(r){
+        return[r.fecha,String(r.inicio),String(r.fin),String(r.trabajadas),String(r.aPagar),r.operador];
+      }):[["Sin registros en este periodo","","","","",""]],
+      foot:[["","","","Total a pagar",String(g.totalPagar),""]],
+      styles:{fontSize:9},headStyles:{fillColor:[31,56,100]},footStyles:{fillColor:[235,243,251],textColor:[20,20,20]},margin:{left:14,right:14}
+    });
+    y=doc.lastAutoTable.finalY+10;
   });
 
   var ahora=new Date();
-  var nombreArchivo="Horometro_"+c.maquina.replace(/\s+/g,"_")+"_"+ahora.getFullYear()+"-"+String(ahora.getMonth()+1).padStart(2,"0")+"-"+String(ahora.getDate()).padStart(2,"0")+"_"+String(ahora.getHours()).padStart(2,"0")+String(ahora.getMinutes()).padStart(2,"0")+".pdf";
+  var sufijo = c.todasMaquinas ? "Todas" : c.grupos[0].maquina.replace(/\s+/g,"_");
+  var nombreArchivo="Horometro_"+sufijo+"_"+ahora.getFullYear()+"-"+String(ahora.getMonth()+1).padStart(2,"0")+"-"+String(ahora.getDate()).padStart(2,"0")+"_"+String(ahora.getHours()).padStart(2,"0")+String(ahora.getMinutes()).padStart(2,"0")+".pdf";
   doc.save(nombreArchivo);
 }
-
 function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
 </script>
 </div><!-- /appContent -->

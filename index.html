@@ -129,7 +129,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 </div>
 <!-- Menú "más" — para utilidades administrativas que no ameritan pestaña propia -->
 <div id="menuMas" style="display:none;background:#fff;border-bottom:1px solid #ddd;padding:8px 14px">
-<div class="menu-item" onclick="abrirHorometro()">⏱ Horómetro de maquinaria</div>
+  <div class="menu-item" onclick="abrirHorometro()">⏱ Horómetro de maquinaria</div>
 </div>
 <div class="hdr"><h1>🏗 Almacén GT01</h1><span>Coatepeque · SOLTECING</span></div>
 <div class="tabs">
@@ -265,10 +265,10 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <!-- Sub-pantalla: registrar lectura diaria -->
   <div id="horScr0" class="hscr on">
     <div class="card">
- <select id="horMaquina" onchange="horMaquinaOFechaCambio()"><option value="">Selecciona la máquina...</option></select>
-<input type="date" id="horFecha" onchange="horMaquinaOFechaCambio()">
-    <input type="text" id="horOperador" placeholder="Nombre del operador..." autocomplete="off" oninput="horBuscarOperador(this.value)">
-<div id="horOperadorSug" class="sug"></div>
+      <select id="horMaquina" onchange="horMaquinaOFechaCambio()"><option value="">Selecciona la máquina...</option></select>
+      <input type="date" id="horFecha" onchange="horMaquinaOFechaCambio()">
+      <input type="text" id="horOperador" placeholder="Nombre del operador..." autocomplete="off" oninput="horBuscarOperador(this.value)">
+      <div id="horOperadorSug" class="sug"></div>
       <input type="number" id="horInicio" placeholder="Horómetro de inicio" step="0.1">
       <input type="number" id="horFin" placeholder="Horómetro de fin" step="0.1">
       <div id="horPreview" style="font-size:12px;color:#1F3864;margin:6px 0;min-height:18px"></div>
@@ -281,16 +281,16 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <!-- Sub-pantalla: corte semanal + exportar PDF -->
   <div id="horScr1" class="hscr">
     <div class="card">
-    <select id="horMaquinaCorte"><option value="">Selecciona la máquina...</option></select>
-<div class="fr-row">
-  <button class="fr-btn on" id="hc0" onclick="horRangoRapido('semana')">📆 Esta semana (lun-sáb)</button>
-  <button class="fr-btn" id="hc1" onclick="horRangoRapido('pasada')">⏮️ Semana pasada</button>
-  <button class="fr-btn" id="hc2" onclick="horRangoRapido('personalizado')">✏️ Elegir fechas</button>
-</div>
-<div id="horRangoManual" style="display:none;margin-top:8px">
-  <input type="date" id="horFechaDesde" style="margin-bottom:6px">
-  <input type="date" id="horFechaHasta">
-</div>
+      <select id="horMaquinaCorte"><option value="">Selecciona la máquina...</option></select>
+      <div class="fr-row">
+        <button class="fr-btn on" id="hc0" onclick="horRangoRapido('semana')">📆 Esta semana (lun-sáb)</button>
+        <button class="fr-btn" id="hc1" onclick="horRangoRapido('pasada')">⏮️ Semana pasada</button>
+        <button class="fr-btn" id="hc2" onclick="horRangoRapido('personalizado')">✏️ Elegir fechas</button>
+      </div>
+      <div id="horRangoManual" style="display:none;margin-top:8px">
+        <input type="date" id="horFechaDesde" style="margin-bottom:6px">
+        <input type="date" id="horFechaHasta">
+      </div>
       <button class="btn b-blue" style="width:100%;margin-top:8px" onclick="horGenerarCorte()">📄 Generar corte</button>
     </div>
     <div id="horCorteResultado"></div>
@@ -305,14 +305,14 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 // ═══════════════════════════════════════════════════════════
 // ALMACÉN GT01 — Frontend (index.html)
 //
-// VERSIÓN ACTUAL: 1.7.0   (17/07/2026)
+// VERSIÓN ACTUAL: 1.9.0   (18/07/2026)
 // Debe coincidir siempre con la versión de Code.gs — son un solo
 // sistema, aunque vivan en dos archivos distintos.
 //
 // Ver el historial completo de versiones en el comentario de
 // encabezado de Code.gs (para no repetirlo dos veces).
 // ═══════════════════════════════════════════════════════════
-var APP_VERSION = "1.8.0";
+var APP_VERSION = "1.9.0";
 
 // ═══════════════════════════════════════════════════════════
 // ÍNDICE — mapa rápido de este archivo, para ubicarte sin tener
@@ -1684,8 +1684,6 @@ function horGoTab(n){
   document.getElementById("horScr1").classList.toggle("on", n===1);
 }
 
-// Carga el catálogo de máquinas (Maquinaria_GT01) y de trabajadores (Personal_GT01,
-// reutilizado — ya lo usa el resto de la app) para los selectores del formulario.
 // Carga el catálogo de máquinas (Maquinaria_GT01) para el selector del formulario.
 // Los operadores YA NO se cargan de Personal_GT01 (son personal externo, no
 // trabajadores de SOLTECING) — ver HOR_OPERADORES_PROVISIONAL más abajo.
@@ -1701,19 +1699,25 @@ function horCargarCatalogos(){
       HOR_MAQUINAS.filter(function(m){return m.estado!=="Inactiva";})
         .map(function(m){return "<option value='"+esc(m.codigo)+"'>"+esc(m.nombre)+"</option>";}).join("");
     document.getElementById("horMaquina").innerHTML = optsMaquina;
+    // El selector de Corte semanal agrega "Todas las máquinas" al inicio,
+    // para poder generar un solo PDF combinado con todas juntas.
     document.getElementById("horMaquinaCorte").innerHTML =
       "<option value='TODAS'>— Todas las máquinas —</option>" + optsMaquina.replace("<option value=''>Selecciona la máquina...</option>","");
 
+    // Fecha de hoy por defecto
     var hoy=new Date();
     document.getElementById("horFecha").value = hoy.getFullYear()+"-"+String(hoy.getMonth()+1).padStart(2,"0")+"-"+String(hoy.getDate()).padStart(2,"0");
   }).catch(function(e){
     document.getElementById("horMsg").innerHTML="<div class='msg-err'>❌ No se pudo cargar el catálogo de máquinas.</div>";
   });
 }
+
 // ── Operadores de maquinaria — lista PROVISIONAL, escrita directo aquí ──
-// Son personas externas a SOLTECING (no están en Personal_GT01). Para
-// agregar un operador nuevo, sumá su nombre a este arreglo. El campo
-// también acepta escribir un nombre que NO esté en esta lista.
+// Son personas externas a SOLTECING (no están en Personal_GT01), y todavía
+// no ameritan una hoja de Excel propia. Para agregar un operador nuevo,
+// simplemente sumá su nombre a este arreglo. El campo de texto también
+// acepta escribir un nombre que NO esté en esta lista (por si llega
+// alguien nuevo antes de actualizar el código) — no bloquea nada.
 var HOR_OPERADORES_PROVISIONAL = ["Anderson Reyes", "Marlon Alexander Orozco Felipe"];
 
 function horBuscarOperador(val){
@@ -1729,6 +1733,16 @@ function horBuscarOperador(val){
   }).join("");
   box.style.display="block";
 }
+function horSelOperador(nombre){
+  document.getElementById("horOperador").value=nombre;
+  document.getElementById("horOperadorSug").innerHTML="";
+  document.getElementById("horOperadorSug").style.display="none";
+}
+
+// ── Memoria del último operador por máquina (solo en este celular) ──
+// Se guarda en localStorage — no toca el Excel ni el backend. Sirve
+// porque, en la práctica, la misma persona suele operar la misma
+// máquina día tras día. Siempre se puede sobreescribir a mano.
 function horAutocompletarOperador(){
   var maquinaCod=document.getElementById("horMaquina").value;
   if(!maquinaCod) return;
@@ -1739,6 +1753,13 @@ function horRecordarOperador(maquinaCod, nombreOperador){
   if(!maquinaCod || !nombreOperador) return;
   localStorage.setItem("gt01_ultimo_operador_"+maquinaCod, nombreOperador);
 }
+
+// ── Prevención de duplicados: una sola lectura por máquina por día ──
+// Se dispara al cambiar la máquina o la fecha. Si ya existe una lectura
+// guardada para esa combinación exacta, el formulario se precarga con
+// esos datos (modo edición) — no se puede crear un duplicado, solo
+// corregir el que ya existe. El backend (Code.gs) también lo verifica
+// de forma independiente, como respaldo final.
 var HOR_EDITANDO_ID = null;
 
 function horMaquinaOFechaCambio(){
@@ -1748,7 +1769,7 @@ function horMaquinaOFechaCambio(){
 
 function horVerificarExistente(){
   var maquinaCod=document.getElementById("horMaquina").value;
-  var fechaVal=document.getElementById("horFecha").value;
+  var fechaVal=document.getElementById("horFecha").value; // yyyy-mm-dd
   var btn=document.getElementById("horBtnGuardar");
   var msg=document.getElementById("horMsg");
 
@@ -1758,7 +1779,7 @@ function horVerificarExistente(){
     return;
   }
   var partes=fechaVal.split("-");
-  var fechaFmt=partes[2]+"/"+partes[1]+"/"+partes[0];
+  var fechaFmt=partes[2]+"/"+partes[1]+"/"+partes[0]; // dd/mm/yyyy, como el resto de la app
 
   sheetsGet("Horometro_Registros!A2:K").then(function(resp){
     var rows=resp.values||[];
@@ -1785,7 +1806,8 @@ function horVerificarExistente(){
     }
   }).catch(function(){});
 }
-// Vista previa en vivo: se recalcula cada vez que cambian los orómetros,
+
+// Vista previa en vivo: se recalcula cada vez que cambian los horómetros,
 // para que Joaquín vea "horas trabajadas" vs. "horas a pagar" ANTES de guardar
 // (la misma regla del mínimo de 5 horas que aplica Code.gs al guardar).
 function horActualizarPreview(){
@@ -1793,7 +1815,7 @@ function horActualizarPreview(){
   var fin=parseFloat(document.getElementById("horFin").value);
   var box=document.getElementById("horPreview");
   if(isNaN(ini)||isNaN(fin)){ box.textContent=""; return; }
-  if(fin<ini){ box.innerHTML="<span style='color:#c0392b'>⚠️ El orómetro de fin no puede ser menor al de inicio</span>"; return; }
+  if(fin<ini){ box.innerHTML="<span style='color:#c0392b'>⚠️ El horómetro de fin no puede ser menor al de inicio</span>"; return; }
   var trabajadas=Math.round((fin-ini)*100)/100;
   var aPagar = trabajadas<5 ? 5 : trabajadas;
   var nota = trabajadas<5 ? " (se ajusta al mínimo de 5)" : "";
@@ -1829,7 +1851,7 @@ function horGuardar(){
     horometroInicio: ini,
     horometroFin: fin,
     observaciones: obs,
-    registradoPor: (SESION&&SESION.nombre)||"Almacenista"e
+    registradoPor: (SESION&&SESION.nombre)||"Almacenista"
   }).then(function(r){
     if(r.error){ msg.innerHTML="<div class='msg-err'>❌ "+r.error+"</div>"; return; }
     horRecordarOperador(maquinaCod, operador);
@@ -1856,6 +1878,7 @@ function horRangoRapido(tipo){
 
   var hoy=new Date();
   if(tipo==="personalizado"){
+    // El rango real se toma de los inputs al momento de generar el corte
     document.getElementById("horFechaDesde").value = fechaAInput(hoy);
     document.getElementById("horFechaHasta").value = fechaAInput(hoy);
     return;
@@ -1878,6 +1901,7 @@ function horGenerarCorte(){
   var d=document.getElementById("horCorteResultado");
   if(!maquinaCod){ d.innerHTML="<div class='msg-err'>Selecciona una máquina (o \"Todas las máquinas\").</div>"; return; }
 
+  // Si el rango es personalizado, se toma de los inputs de fecha en este momento
   var esPersonalizado=document.getElementById("hc2").classList.contains("on");
   if(esPersonalizado){
     var vd=document.getElementById("horFechaDesde").value;
@@ -1895,6 +1919,8 @@ function horGenerarCorte(){
     var rows=resp.values||[];
     var todasMaquinas = (maquinaCod==="TODAS");
 
+    // Arma un arreglo de registros por cada máquina que corresponda mostrar.
+    // Si es "Todas", se agrupa una tabla por máquina; si es una sola, es un solo grupo.
     var maquinasAMostrar = todasMaquinas
       ? HOR_MAQUINAS.filter(function(m){return m.estado!=="Inactiva";})
       : HOR_MAQUINAS.filter(function(m){return m.codigo===maquinaCod;});
@@ -1950,6 +1976,8 @@ function horDescargarPDF(){
   doc.setTextColor(100);
   doc.text("Periodo: "+c.rangoTxt+"   ·   Generado: "+new Date().toLocaleString("es-GT"),14,21);
 
+  // Un PDF combinado: una tabla por máquina, una debajo de la otra.
+  // Si no cabe en la página, jsPDF-autotable salta de página automáticamente.
   var y=28;
   c.grupos.forEach(function(g,i){
     if(i>0 && y>250){ doc.addPage(); y=20; }
@@ -1973,6 +2001,7 @@ function horDescargarPDF(){
   var nombreArchivo="Horometro_"+sufijo+"_"+ahora.getFullYear()+"-"+String(ahora.getMonth()+1).padStart(2,"0")+"-"+String(ahora.getDate()).padStart(2,"0")+"_"+String(ahora.getHours()).padStart(2,"0")+String(ahora.getMinutes()).padStart(2,"0")+".pdf";
   doc.save(nombreArchivo);
 }
+
 function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
 </script>
 </div><!-- /appContent -->

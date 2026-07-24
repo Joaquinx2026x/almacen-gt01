@@ -265,16 +265,16 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <!-- Sub-pantalla: registrar lectura diaria -->
   <div id="horScr0" class="hscr on">
     <div class="card">
-   <select id="horMaquina" onchange="horAutocompletarOperador()"><option value="">Selecciona la máquina...</option></select>
-      <input type="date" id="horFecha">
+ <select id="horMaquina" onchange="horMaquinaOFechaCambio()"><option value="">Selecciona la máquina...</option></select>
+<input type="date" id="horFecha" onchange="horMaquinaOFechaCambio()">
     <input type="text" id="horOperador" placeholder="Nombre del operador..." autocomplete="off" oninput="horBuscarOperador(this.value)">
 <div id="horOperadorSug" class="sug"></div>
-      <input type="number" id="horInicio" placeholder="Orómetro de inicio" step="0.1">
-      <input type="number" id="horFin" placeholder="Orómetro de fin" step="0.1">
+      <input type="number" id="horInicio" placeholder="Horómetro de inicio" step="0.1">
+      <input type="number" id="horFin" placeholder="Horómetro de fin" step="0.1">
       <div id="horPreview" style="font-size:12px;color:#1F3864;margin:6px 0;min-height:18px"></div>
       <input type="text" id="horObs" placeholder="Observaciones (opcional)">
       <div id="horMsg"></div>
-      <button class="btn b-ok" style="width:100%" onclick="horGuardar()">💾 Registrar lectura</button>
+      <button class="btn b-ok" id="horBtnGuardar" style="width:100%" onclick="horGuardar()">💾 Registrar lectura</button>
     </div>
   </div>
 
@@ -1739,6 +1739,52 @@ function horRecordarOperador(maquinaCod, nombreOperador){
   if(!maquinaCod || !nombreOperador) return;
   localStorage.setItem("gt01_ultimo_operador_"+maquinaCod, nombreOperador);
 }
+var HOR_EDITANDO_ID = null;
+
+function horMaquinaOFechaCambio(){
+  horAutocompletarOperador();
+  horVerificarExistente();
+}
+
+function horVerificarExistente(){
+  var maquinaCod=document.getElementById("horMaquina").value;
+  var fechaVal=document.getElementById("horFecha").value;
+  var btn=document.getElementById("horBtnGuardar");
+  var msg=document.getElementById("horMsg");
+
+  if(!maquinaCod || !fechaVal){
+    HOR_EDITANDO_ID=null;
+    if(btn) btn.textContent="💾 Registrar lectura";
+    return;
+  }
+  var partes=fechaVal.split("-");
+  var fechaFmt=partes[2]+"/"+partes[1]+"/"+partes[0];
+
+  sheetsGet("Horometro_Registros!A2:K").then(function(resp){
+    var rows=resp.values||[];
+    var existente=null;
+    for(var i=0;i<rows.length;i++){
+      if((rows[i][2]||"").toString().trim()===maquinaCod && (rows[i][1]||"").toString().trim()===fechaFmt){
+        existente=rows[i];
+        break;
+      }
+    }
+    if(existente){
+      HOR_EDITANDO_ID=existente[0];
+      document.getElementById("horInicio").value=existente[4];
+      document.getElementById("horFin").value=existente[5];
+      document.getElementById("horOperador").value=(existente[8]||"").toString();
+      document.getElementById("horObs").value=(existente[10]||"").toString();
+      if(btn) btn.textContent="✏️ Actualizar lectura";
+      msg.innerHTML="<div class='aviso'>ℹ️ Ya existe una lectura para esta máquina en esta fecha — se cargaron sus datos, podés corregirlos.</div>";
+      horActualizarPreview();
+    } else {
+      HOR_EDITANDO_ID=null;
+      if(btn) btn.textContent="💾 Registrar lectura";
+      msg.innerHTML="";
+    }
+  }).catch(function(){});
+}
 // Vista previa en vivo: se recalcula cada vez que cambian los orómetros,
 // para que Joaquín vea "horas trabajadas" vs. "horas a pagar" ANTES de guardar
 // (la misma regla del mínimo de 5 horas que aplica Code.gs al guardar).
@@ -1783,15 +1829,18 @@ function horGuardar(){
     horometroInicio: ini,
     horometroFin: fin,
     observaciones: obs,
-    registradoPor: (SESION&&SESION.nombre)||"Almacenista"
+    registradoPor: (SESION&&SESION.nombre)||"Almacenista"e
   }).then(function(r){
-  if(r.error){ msg.innerHTML="<div class='msg-err'>❌ "+r.error+"</div>"; return; }
+    if(r.error){ msg.innerHTML="<div class='msg-err'>❌ "+r.error+"</div>"; return; }
     horRecordarOperador(maquinaCod, operador);
-    msg.innerHTML="<div class='msg-ok'>✅ Registrado — "+r.horasTrabajadas+" h trabajadas, "+r.horasAPagar+" h a pagar.</div>";
+    var accion = r.editado ? "Actualizado" : "Registrado";
+    msg.innerHTML="<div class='msg-ok'>✅ "+accion+" — "+r.horasTrabajadas+" h trabajadas, "+r.horasAPagar+" h a pagar.</div>";
     document.getElementById("horInicio").value="";
     document.getElementById("horFin").value="";
     document.getElementById("horObs").value="";
     document.getElementById("horPreview").textContent="";
+    HOR_EDITANDO_ID=null;
+    document.getElementById("horBtnGuardar").textContent="💾 Registrar lectura";
   }).catch(function(e){
     msg.innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
   });

@@ -165,7 +165,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
     <input type="text" id="bi" placeholder="Buscar herramienta..." oninput="buscaItem(this.value)">
     <div class="sug" id="si"></div>
     <div id="li"><div class="empty"><div class="ei">📋</div><p>Agrega herramientas, insumos o materiales</p></div></div>
-    <button class="btn b-ok" id="bguard" style="display:none" onclick="guardar()">✅ Registrar préstamo completo</button>
+    <button class="btn b-ok" id="bguard" style="display:none;position:sticky;bottom:10px;z-index:5;box-shadow:0 2px 10px rgba(0,0,0,.25)" onclick="guardar()">✅ Registrar préstamo completo</button>
   </div>
   <div id="rp"></div>
 </div>
@@ -260,6 +260,7 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
   <div class="tabs" style="margin-bottom:10px">
     <div class="tab on" id="horTab0" onclick="horGoTab(0)">📝 Registrar</div>
     <div class="tab"    id="horTab1" onclick="horGoTab(1)">📄 Corte semanal</div>
+    <div class="tab"    id="horTab2" onclick="horGoTab(2)">🛠 Mantenimiento</div>
   </div>
 
   <!-- Sub-pantalla: registrar lectura diaria -->
@@ -295,6 +296,36 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
     </div>
     <div id="horCorteResultado"></div>
   </div>
+
+  <!-- Sub-pantalla: mantenimiento (buscar, navegar, editar, eliminar) -->
+  <div id="horScr2" class="hscr">
+    <div class="card">
+      <select id="horMantMaquina"><option value="">Selecciona la máquina...</option></select>
+      <input type="text" id="horMantBuscar" placeholder="Filtrar por fecha u operador (opcional)...">
+      <button class="btn b-blue" style="width:100%" onclick="horMantCargar()">🔍 Cargar registros</button>
+    </div>
+    <div id="horMantNav" style="display:none" class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <button class="btn b-sec" style="padding:6px 10px;font-size:12px" onclick="horMantPrimero()">⏮ Primero</button>
+        <button class="btn b-sec" style="padding:6px 10px;font-size:12px" onclick="horMantAnterior()">◀ Anterior</button>
+        <span id="horMantPos" style="font-size:12px;color:#1F3864;font-weight:bold"></span>
+        <button class="btn b-sec" style="padding:6px 10px;font-size:12px" onclick="horMantSiguiente()">Siguiente ▶</button>
+        <button class="btn b-sec" style="padding:6px 10px;font-size:12px" onclick="horMantUltimo()">Último ⏭</button>
+      </div>
+      <div id="horMantFechaMaquina" style="font-size:13px;font-weight:bold;color:#1F3864;margin-bottom:8px"></div>
+      <input type="text" id="horMantOperador" placeholder="Operador">
+      <input type="number" id="horMantInicio" placeholder="Horómetro de inicio" step="0.1">
+      <input type="number" id="horMantFin" placeholder="Horómetro de fin" step="0.1">
+      <div id="horMantPreview" style="font-size:12px;color:#1F3864;margin:6px 0;min-height:18px"></div>
+      <input type="text" id="horMantObs" placeholder="Observaciones">
+      <div id="horMantMsg"></div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="btn b-ok" style="flex:1" onclick="horMantGuardar()">💾 Guardar cambios</button>
+        <button class="btn b-danger" style="flex:0" onclick="horMantEliminar()">🗑 Eliminar</button>
+      </div>
+    </div>
+    <div id="horMantVacio"></div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -305,14 +336,14 @@ input,select{width:100%;padding:9px 10px;border:1px solid #BDD7EE;border-radius:
 // ═══════════════════════════════════════════════════════════
 // ALMACÉN GT01 — Frontend (index.html)
 //
-// VERSIÓN ACTUAL: 1.9.0   (18/07/2026)
+// VERSIÓN ACTUAL: 2.0.0   (25/07/2026)
 // Debe coincidir siempre con la versión de Code.gs — son un solo
 // sistema, aunque vivan en dos archivos distintos.
 //
 // Ver el historial completo de versiones en el comentario de
 // encabezado de Code.gs (para no repetirlo dos veces).
 // ═══════════════════════════════════════════════════════════
-var APP_VERSION = "1.9.0";
+var APP_VERSION = "2.0.0";
 
 // ═══════════════════════════════════════════════════════════
 // ÍNDICE — mapa rápido de este archivo, para ubicarte sin tener
@@ -674,7 +705,7 @@ function addItem(cod,desc,tipo,unidad){
   if(tipo==="Herramienta"&&ITEMS.some(function(i){return i.codigo===cod;})){
     alert("Esa herramienta ya está en la lista.");return;
   }
-  ITEMS.push({codigo:cod,descripcion:desc,tipo:tipo||TIPO,unidad:unidad||"und",cantidad:1,detalle:"",obs:""});
+  ITEMS.unshift({codigo:cod,descripcion:desc,tipo:tipo||TIPO,unidad:unidad||"und",cantidad:1,detalle:"",obs:""});
   renderItems();
 }
 
@@ -1680,8 +1711,10 @@ function cerrarHorometro(){
 function horGoTab(n){
   document.getElementById("horTab0").classList.toggle("on", n===0);
   document.getElementById("horTab1").classList.toggle("on", n===1);
+  document.getElementById("horTab2").classList.toggle("on", n===2);
   document.getElementById("horScr0").classList.toggle("on", n===0);
   document.getElementById("horScr1").classList.toggle("on", n===1);
+  document.getElementById("horScr2").classList.toggle("on", n===2);
 }
 
 // Carga el catálogo de máquinas (Maquinaria_GT01) para el selector del formulario.
@@ -1699,10 +1732,11 @@ function horCargarCatalogos(){
       HOR_MAQUINAS.filter(function(m){return m.estado!=="Inactiva";})
         .map(function(m){return "<option value='"+esc(m.codigo)+"'>"+esc(m.nombre)+"</option>";}).join("");
     document.getElementById("horMaquina").innerHTML = optsMaquina;
-    // El selector de Corte semanal agrega "Todas las máquinas" al inicio,
-    // para poder generar un solo PDF combinado con todas juntas.
-    document.getElementById("horMaquinaCorte").innerHTML =
-      "<option value='TODAS'>— Todas las máquinas —</option>" + optsMaquina.replace("<option value=''>Selecciona la máquina...</option>","");
+    // El selector de Corte semanal y el de Mantenimiento agregan
+    // "Todas las máquinas" al inicio.
+    var optsConTodas = "<option value='TODAS'>— Todas las máquinas —</option>" + optsMaquina.replace("<option value=''>Selecciona la máquina...</option>","");
+    document.getElementById("horMaquinaCorte").innerHTML = optsConTodas;
+    document.getElementById("horMantMaquina").innerHTML = optsConTodas;
 
     // Fecha de hoy por defecto
     var hoy=new Date();
@@ -1810,10 +1844,14 @@ function horVerificarExistente(){
 // Vista previa en vivo: se recalcula cada vez que cambian los horómetros,
 // para que Joaquín vea "horas trabajadas" vs. "horas a pagar" ANTES de guardar
 // (la misma regla del mínimo de 5 horas que aplica Code.gs al guardar).
-function horActualizarPreview(){
-  var ini=parseFloat(document.getElementById("horInicio").value);
-  var fin=parseFloat(document.getElementById("horFin").value);
-  var box=document.getElementById("horPreview");
+// Sirve para los dos formularios que tienen horómetro inicio/fin:
+// "Registrar" (ids horInicio/horFin/horPreview) y "Mantenimiento"
+// (ids horMantInicio/horMantFin/horMantPreview).
+function horActualizarPreview(prefijo){
+  prefijo = prefijo || "hor";
+  var ini=parseFloat(document.getElementById(prefijo+"Inicio").value);
+  var fin=parseFloat(document.getElementById(prefijo+"Fin").value);
+  var box=document.getElementById(prefijo+"Preview");
   if(isNaN(ini)||isNaN(fin)){ box.textContent=""; return; }
   if(fin<ini){ box.innerHTML="<span style='color:#c0392b'>⚠️ El horómetro de fin no puede ser menor al de inicio</span>"; return; }
   var trabajadas=Math.round((fin-ini)*100)/100;
@@ -1822,7 +1860,8 @@ function horActualizarPreview(){
   box.innerHTML="Horas trabajadas: <b>"+trabajadas+"</b> — Horas a pagar: <b>"+aPagar+"</b>"+nota;
 }
 document.addEventListener("input", function(e){
-  if(e.target && (e.target.id==="horInicio" || e.target.id==="horFin")) horActualizarPreview();
+  if(e.target && (e.target.id==="horInicio" || e.target.id==="horFin")) horActualizarPreview("hor");
+  if(e.target && (e.target.id==="horMantInicio" || e.target.id==="horMantFin")) horActualizarPreview("horMant");
 });
 
 function horGuardar(){
@@ -2000,6 +2039,148 @@ function horDescargarPDF(){
   var sufijo = c.todasMaquinas ? "Todas" : c.grupos[0].maquina.replace(/\s+/g,"_");
   var nombreArchivo="Horometro_"+sufijo+"_"+ahora.getFullYear()+"-"+String(ahora.getMonth()+1).padStart(2,"0")+"-"+String(ahora.getDate()).padStart(2,"0")+"_"+String(ahora.getHours()).padStart(2,"0")+String(ahora.getMinutes()).padStart(2,"0")+".pdf";
   doc.save(nombreArchivo);
+}
+
+// ══════════════════════════════════════════════
+//  MANTENIMIENTO DEL HORÓMETRO — buscar, navegar
+//  (primero/anterior/siguiente/último), editar y eliminar
+//  un registro puntual. Es la ÚNICA sección de la app con
+//  capacidad de eliminar — a propósito contenida solo aquí.
+// ══════════════════════════════════════════════
+var HOR_MANT_LISTA=[];
+var HOR_MANT_INDICE=0;
+
+function horMantCargar(){
+  var maquinaCod=document.getElementById("horMantMaquina").value;
+  var texto=document.getElementById("horMantBuscar").value.toLowerCase().trim();
+  var vacio=document.getElementById("horMantVacio");
+  var nav=document.getElementById("horMantNav");
+
+  if(!maquinaCod){
+    vacio.innerHTML="<div class='msg-err'>Selecciona una máquina (o \"Todas las máquinas\").</div>";
+    nav.style.display="none";
+    return;
+  }
+  vacio.innerHTML="<div class='loading'>🔄 Cargando registros...</div>";
+  nav.style.display="none";
+
+  sheetsGet("Horometro_Registros!A2:K").then(function(resp){
+    var rows=resp.values||[];
+    var lista=rows.filter(function(r){
+      if(!r[0]) return false;
+      if(maquinaCod!=="TODAS" && (r[2]||"").toString().trim()!==maquinaCod) return false;
+      if(texto){
+        var fecha=(r[1]||"").toString().toLowerCase();
+        var operador=(r[8]||"").toString().toLowerCase();
+        var maquina=(r[3]||"").toString().toLowerCase();
+        if(fecha.indexOf(texto)<0 && operador.indexOf(texto)<0 && maquina.indexOf(texto)<0) return false;
+      }
+      return true;
+    }).map(function(r){
+      return {
+        id:(r[0]||"").toString(), fecha:(r[1]||"").toString(), fechaObj:parseFechaDMY((r[1]||"").toString()),
+        codigoMaquina:(r[2]||"").toString(), nombreMaquina:(r[3]||"").toString(),
+        inicio:r[4], fin:r[5], trabajadas:r[6], aPagar:r[7],
+        operador:(r[8]||"").toString(), registradoPor:(r[9]||"").toString(), observaciones:(r[10]||"").toString()
+      };
+    });
+
+    // Orden cronológico: "Primero" = el más antiguo, "Último" = el más reciente
+    lista.sort(function(a,b){
+      if(!a.fechaObj||!b.fechaObj) return 0;
+      return a.fechaObj-b.fechaObj;
+    });
+
+    HOR_MANT_LISTA=lista;
+    if(!lista.length){
+      vacio.innerHTML="<div class='empty'><div class='ei'>📭</div><p>Sin registros que coincidan con la búsqueda</p></div>";
+      nav.style.display="none";
+      return;
+    }
+    vacio.innerHTML="";
+    nav.style.display="block";
+    HOR_MANT_INDICE=lista.length-1; // arranca mostrando el más reciente
+    horMantMostrarActual();
+  }).catch(function(e){
+    vacio.innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
+}
+
+function horMantMostrarActual(){
+  var r=HOR_MANT_LISTA[HOR_MANT_INDICE];
+  if(!r) return;
+  document.getElementById("horMantPos").textContent="Registro "+(HOR_MANT_INDICE+1)+" de "+HOR_MANT_LISTA.length;
+  document.getElementById("horMantFechaMaquina").textContent="📅 "+r.fecha+" · 🚜 "+r.nombreMaquina;
+  document.getElementById("horMantOperador").value=r.operador;
+  document.getElementById("horMantInicio").value=r.inicio;
+  document.getElementById("horMantFin").value=r.fin;
+  document.getElementById("horMantObs").value=r.observaciones;
+  document.getElementById("horMantMsg").innerHTML="";
+  horActualizarPreview("horMant");
+}
+
+function horMantPrimero(){ HOR_MANT_INDICE=0; horMantMostrarActual(); }
+function horMantAnterior(){ if(HOR_MANT_INDICE>0){ HOR_MANT_INDICE--; horMantMostrarActual(); } }
+function horMantSiguiente(){ if(HOR_MANT_INDICE<HOR_MANT_LISTA.length-1){ HOR_MANT_INDICE++; horMantMostrarActual(); } }
+function horMantUltimo(){ HOR_MANT_INDICE=HOR_MANT_LISTA.length-1; horMantMostrarActual(); }
+
+function horMantGuardar(){
+  var r=HOR_MANT_LISTA[HOR_MANT_INDICE];
+  var msg=document.getElementById("horMantMsg");
+  msg.innerHTML="";
+  if(!r) return;
+
+  var operador=document.getElementById("horMantOperador").value.trim();
+  var ini=document.getElementById("horMantInicio").value;
+  var fin=document.getElementById("horMantFin").value;
+  var obs=document.getElementById("horMantObs").value.trim();
+
+  if(!operador||!ini||!fin){
+    msg.innerHTML="<div class='msg-err'>Operador, horómetro de inicio y de fin son obligatorios.</div>";
+    return;
+  }
+
+  // Se envía la MISMA máquina+fecha del registro actual — Code.gs va a
+  // encontrar que ya existe y va a ACTUALIZAR esa fila, no crear una nueva.
+  gasPost("guardarLecturaHorometro",{
+    codigoMaquina: r.codigoMaquina,
+    nombreMaquina: r.nombreMaquina,
+    fecha: r.fecha,
+    operador: operador,
+    horometroInicio: ini,
+    horometroFin: fin,
+    observaciones: obs,
+    registradoPor: (SESION&&SESION.nombre)||"Almacenista"
+  }).then(function(res){
+    if(res.error){ msg.innerHTML="<div class='msg-err'>❌ "+res.error+"</div>"; return; }
+    // Actualiza el registro en memoria, sin recargar toda la lista
+    r.operador=operador; r.inicio=ini; r.fin=fin; r.observaciones=obs;
+    r.trabajadas=res.horasTrabajadas; r.aPagar=res.horasAPagar;
+    msg.innerHTML="<div class='msg-ok'>✅ Cambios guardados — "+res.horasTrabajadas+" h trabajadas, "+res.horasAPagar+" h a pagar.</div>";
+  }).catch(function(e){
+    msg.innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
+}
+
+function horMantEliminar(){
+  var r=HOR_MANT_LISTA[HOR_MANT_INDICE];
+  if(!r) return;
+  if(!confirm("¿Eliminar el registro de "+r.nombreMaquina+" del "+r.fecha+"? Esta acción no se puede deshacer.")) return;
+
+  var msg=document.getElementById("horMantMsg");
+  gasPost("eliminarLecturaHorometro",{id:r.id}).then(function(res){
+    if(res.error){ msg.innerHTML="<div class='msg-err'>❌ "+res.error+"</div>"; return; }
+    HOR_MANT_LISTA.splice(HOR_MANT_INDICE,1);
+    if(!HOR_MANT_LISTA.length){
+      document.getElementById("horMantNav").style.display="none";
+      document.getElementById("horMantVacio").innerHTML="<div class='empty'><div class='ei'>📭</div><p>Sin registros — se eliminó el último de la búsqueda actual</p></div>";
+      return;
+    }
+    if(HOR_MANT_INDICE>=HOR_MANT_LISTA.length) HOR_MANT_INDICE=HOR_MANT_LISTA.length-1;
+    horMantMostrarActual();
+  }).catch(function(e){
+    msg.innerHTML="<div class='msg-err'>❌ Error: "+e.message+"</div>";
+  });
 }
 
 function esc(s){return(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
